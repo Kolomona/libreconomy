@@ -1,0 +1,38 @@
+# Phase Plan: Agent Entity and Core Components Implementation
+
+## Problem Description
+Implement the foundational agent entity and its core components (Needs, Inventory, Wallet) in ECS. This enables basic simulation and testing, forming the basis for all future systems.
+
+---
+
+## Phase 1: Agent Entity Structure
+- [ ] Define Agent entity type in ECS
+- [ ] Ensure unique AgentId assignment
+
+## Phase 2: Core Agent Components
+- [ ] Implement Needs component (thirst, hunger)
+- [ ] Implement Inventory component (references to Item entities)
+- [ ] Implement Wallet component (currency balance)
+
+## Phase 3: Agent Creation Logic
+- [ ] Implement agent creation function
+- [ ] Assign default components to new agents
+- [ ] Validate agent creation with unit tests
+
+## Phase 4: Agent Lifecycle Management
+- [ ] Implement agent removal function
+- [ ] Ensure ECS world updates on agent removal
+- [ ] Validate agent removal with unit tests
+
+## Phase 5: ECS Integration
+- [ ] Register agent and core components with ECS world
+- [ ] Test ECS queries for agents and components
+
+## Phase 6: Unit Testing
+- [ ] Write unit tests for agent creation
+- [ ] Write unit tests for component assignment
+- [ ] Write unit tests for agent removal
+
+---
+
+Each phase is self-contained and can be executed in a single session by an AI agent. All implementation must conform to coding standards in Reference/coding-contract.md.
