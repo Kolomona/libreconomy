@@ -13,19 +13,21 @@ This guide shows how to consume the Rust `libreconomy` simulation library inside
 
 Rather than calling the Rust library directly from GDScript, we create a small C++ GDExtension that wraps exported functions and exposes a high-level `LibreEconomy` class to Godot.
 
-## 2. Build Rust Artifacts
-Use the release script to produce all required artifacts including docs (optional) and headers.
+## 2. One-command bundle: `dist/godot4/`
+Run the release script to build Rust, docs, and a Godot 4 integration bundle.
 
 ```bash
 bash scripts/release.sh
 ```
 
-Artifacts of interest appear in `dist/`:
+After it finishes, check `dist/godot4/`:
 
-- `dist/liblibreconomy.so` (Linux) / `dist/liblibreconomy.dylib` (macOS) / `dist/liblibreconomy.dll` (Windows)
-- `dist/libreconomy.h`
+- `lib/` — Rust shared library (`liblibreconomy.*`) and header (`libreconomy.h`)
+- `bridge/` — C++ GDExtension sources: `libreconomy_bridge.cpp`, `libreconomy.gdextension`, `SConstruct`
+- `build/` — output location where the bridge (.so) will be produced if you build it
+- `README.md` — quick steps to build and drop into your Godot project
 
-Keep these files together. You'll copy them into your Godot project's `native/libreconomy/` (or similar) directory.
+If you set `GODOT_CPP_DIR` and have SCons installed, the script can optionally auto-build the bridge. Otherwise, you can build it yourself using the scaffold in `bridge/`.
 
 ## 3. Godot Project Layout (Suggested)
 ```
@@ -35,18 +37,23 @@ my_godot_game/
     libreconomy/
       liblibreconomy.so          # Rust shared library
       libreconomy.h              # C header
-      libreconomy_bridge.cpp     # GDExtension C++ wrapper
-      SConstruct or CMakeLists.txt
-      libreconomy.gdextension    # Extension config
+    libreeconomy_gdextension.so# Built bridge from dist/godot4/build/
+    liblibreconomy.so          # From dist/godot4/lib/
+    libreconomy.h              # From dist/godot4/lib/
+    libreconomy.gdextension    # From dist/godot4/bridge/
   scripts/
     test_libreconomy.gd
   project.godot
 ```
 
-## 4. Fetch godot-cpp Bindings
-Clone or fetch prebuilt godot-cpp matching your Godot engine version. Follow the official docs: <https://docs.godotengine.org/en/stable/contributing/development/compiling/gdextension_cpp_example.html>
+## 4. Prereq: godot-cpp for Godot 4.5.1 (Linux x86_64)
+Build or fetch `godot-cpp` matching Godot v4.5.1. Set an environment variable pointing to it:
 
-You need include dirs & built static library (`libgodot-cpp.*`). Place it where your build system can reference it (`native/godot-cpp/` or a sibling directory).
+```bash
+export GODOT_CPP_DIR=/path/to/godot-cpp-4.5.1-linux-x86_64
+```
+
+It must contain `include/` and `bin/` with the compiled `libgodot-cpp`.
 
 ## 5. C++ Bridge Implementation
 Create `libreconomy_bridge.cpp`:
@@ -107,28 +114,14 @@ linux.release.x86_64 = "res://native/libreconomy/libreconomy_gdextension.so"
 # windows.release.x86_64 = "res://native/libreconomy/libreconomy_gdextension.dll"
 ```
 
-## 7. Build Script (SCons Example)
-Minimal `SConstruct` near `libreconomy_bridge.cpp`:
+## 7. Build the bridge (SCons)
+From `dist/godot4/`, build the bridge using SCons and the scaffold:
 
 ```python
-import os
-
-env = Environment()
-
-GODOT_CPP = "../godot-cpp"  # Adjust path
-LIBRE_PATH = "."           # Current directory holding liblibreconomy.so
-
-# Include + link godot-cpp
-env.Append(CPPPATH=[f"{GODOT_CPP}/include", f"{GODOT_CPP}/include/godot_cpp"])
-env.Append(LIBPATH=[f"{GODOT_CPP}/bin", LIBRE_PATH])
-# Link order: your bridge, then libreconomy, then godot-cpp
-env.Append(LIBS=["libreconomy", "godot-cpp"])
-
-sources = ["libreconomy_bridge.cpp"]
-
-# Produce .so (Linux example). Adjust target name.
-lib = env.SharedLibrary(target="libreconomy_gdextension", source=sources)
-Default(lib)
+# In shell:
+# 1) export GODOT_CPP_DIR=/path/to/godot-cpp-4.5.1-linux-x86_64
+# 2) scons -C dist/godot4/bridge
+# Output: dist/godot4/build/libreconomy_gdextension.so
 ```
 
 Platform adjustments:
@@ -136,11 +129,10 @@ Platform adjustments:
 - macOS: produce `.dylib`; may need `install_name_tool` changes for runtime path.
 
 ## 8. Runtime Library Placement
-Godot needs both:
-- `libreconomy_gdextension.so` (the bridge) referenced in `.gdextension` file
-- `liblibreconomy.so` accessible via dynamic loader (same directory recommended)
-
-Keep them together in `res://native/libreconomy/`.
+Copy these into your project under `res://native/libreconomy/`:
+- `dist/godot4/build/libreconomy_gdextension.so` (the bridge)
+- `dist/godot4/lib/liblibreconomy.so` (Rust library)
+- `dist/godot4/bridge/libreconomy.gdextension` (config)
 
 ## 9. Using the Extension from GDScript
 Example script `scripts/test_libreconomy.gd`:
@@ -166,8 +158,9 @@ When extending:
 For collections/components, consider creating additional wrapper classes (e.g., `AgentHandle`, `InventoryView`) to keep the API clean.
 
 ## 11. Hot Reload & Rebuild Loop
-- Change Rust code → `bash scripts/release.sh` → copy updated `liblibreconomy.so` → restart Godot editor (sometimes necessary for symbol refresh).
-- If ABI changes (function signatures), rebuild C++ bridge.
+- Change Rust code → `bash scripts/release.sh` (rebuilds lib and updates dist/godot4)
+- Re-run `scons -C dist/godot4/bridge` if headers or ABI changed
+- Restart Godot editor if symbols don’t refresh
 
 ## 12. Versioning & Stability
 Track a Rust-side semantic version and expose it via a function like `libreconomy_version()`. Increment when the C ABI changes. Godot scripts can assert compatibility.
