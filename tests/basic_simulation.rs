@@ -1,6 +1,5 @@
 use libreconomy::*;
 
-use crate::agent::components::*;
 use specs::prelude::*;
 
 #[test]
@@ -23,6 +22,41 @@ fn test_create_world_with_agents() {
 }
 
 #[test]
+fn test_example_agent_creation_pattern() {
+    // This mirrors the example usage and enforces TDD for the example path
+    let mut world = World::new();
+    world.register::<Needs>();
+    world.register::<Inventory>();
+    world.register::<Wallet>();
+    world.register::<Skills>();
+    world.register::<Agent>();
+
+    // Insert allocator and allocate an AgentId
+    world.insert(AgentIdAllocator::new());
+    let id = {
+        let mut alloc = world.write_resource::<AgentIdAllocator>();
+        alloc.allocate().expect("allocate AgentId")
+    };
+
+    // Create one Agent entity with the allocated id
+    let _e = world
+        .create_entity()
+        .with(Needs { thirst: 0.1, hunger: 0.2 })
+        .with(Inventory { items: std::collections::HashMap::new() })
+        .with(Wallet { currency: 10.0 })
+        .with(Skills { skills: std::collections::HashMap::new() })
+        .with(Agent { id })
+        .build();
+
+    // Assert exactly one Agent in storage and id is positive
+    let entities = world.entities();
+    let storage = world.read_storage::<Agent>();
+    let mut ids: Vec<AgentId> = (&entities, &storage).join().map(|(_e, a)| a.id).collect();
+    assert_eq!(ids.len(), 1);
+    assert!(ids.pop().unwrap().0 > 0);
+}
+
+#[test]
 fn test_libreconomy_version_ffi() {
     extern "C" {
         fn libreconomy_version() -> *const u8;
@@ -37,7 +71,6 @@ fn test_libreconomy_version_ffi() {
 #[cfg(test)]
 mod ecs_missing_components_tests {
     use super::*;
-    use specs::prelude::*;
 
     #[test]
     fn test_knowledge_component_creation() {

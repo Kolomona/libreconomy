@@ -1,5 +1,6 @@
 //! Agent ECS components
 use specs::prelude::{Component, VecStorage};
+use super::identity::AgentId;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -28,6 +29,16 @@ pub struct Wallet {
 }
 
 impl Component for Wallet {
+    type Storage = VecStorage<Self>;
+}
+
+/// Marker/data component designating an entity as an Agent with a unique id
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Agent {
+    pub id: AgentId,
+}
+
+impl Component for Agent {
     type Storage = VecStorage<Self>;
 }
 

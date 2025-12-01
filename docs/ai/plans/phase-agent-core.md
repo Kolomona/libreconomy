@@ -6,8 +6,11 @@ Implement the foundational agent entity and its core components (Needs, Inventor
 ---
 
 ## Phase 1: Agent Entity Structure
-- [ ] Define Agent entity type in ECS
-- [ ] Ensure unique AgentId assignment
+- [x] Define Agent entity type in ECS
+- [x] Ensure unique AgentId assignment
+	- Implemented `AgentId` newtype and `Agent` component
+	- Added `AgentIdAllocator` resource with safe, overflow-checked allocation
+	- Added simple unit tests validating uniqueness and ECS registration
 
 ## Phase 2: Core Agent Components
 - [ ] Implement Needs component (thirst, hunger)

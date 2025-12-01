@@ -1,0 +1,4 @@
+module libreconomyFFI {
+    header "libreconomyFFI.h"
+    export *
+}

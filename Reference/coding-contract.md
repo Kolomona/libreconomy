@@ -104,6 +104,83 @@ Before any code submission, verify:
 - [ ] Feature flags used for optional code
 - [ ] Benchmarks added if performance-critical
 
+## FFI BINDINGS POLICY (MANDATORY)
+
+The project uses metadata-based uniffi binding generation. Follow these rules precisely to ensure bindings are always generated and releases are reproducible.
+
+1) Binding strategy
+- C header: Generated with cbindgen during release.
+- High-level languages (Python/Swift/Kotlin): Generated from compiled cdylib metadata via uniffi-bindgen (no UDL parsing in the critical path).
+
+1.a) C header and `cbindgen.toml` (MANDATORY)
+- The file `cbindgen.toml` MUST exist and be kept under version control.
+- Header generation must be deterministic and stable across tool versions.
+- Required minimal settings in `cbindgen.toml`:
+    - `include_guard = "LIBRECONOMY_H"`
+    - `pragma_once = true`
+    - `sys_includes = ["stdint.h", "stdbool.h", "stdlib.h"]`
+    - `usize_is_size_t = true`
+    - `cpp_compat = true`
+    - `documentation = false`
+    - `[parse] parse_deps = false`
+- Do NOT rely on per-item renaming in `cbindgen` `config`; keep Rust symbol names stable and intentional.
+- Breaking changes to exported C symbols require a major version bump.
+
+2) Crate setup
+- Cargo.toml must include:
+    - `uniffi = { version = "0.28", features = ["build"] }`
+    - Library types: `rlib` and `cdylib` (for tests and FFI).
+
+3) Exporting APIs
+- Annotate every exported function or method with `#[uniffi::export]`.
+- Place `uniffi::setup_scaffolding!()` exactly once in the crate root (`src/lib.rs`).
+- Keep FFI surface minimal and stable. Use only uniffi-supported types:
+    - Primitives: `bool`, `i{8,16,32,64}`, `u{8,16,32,64}`, `f32`, `f64`
+    - `String`, `Vec<T>`, `Option<T>`, `Result<T, E>`
+    - Custom types: derive `uniffi::Record`, `uniffi::Enum`, `uniffi::Error` as needed
+- Do not panic across FFI. Use `Result<T, E>` with a `#[derive(uniffi::Error)]` error type.
+- Keep FFI thin; all domain logic remains in pure Rust.
+
+4) Release requirements (STRICT)
+- The release script MUST:
+    - Build in `--release` mode
+    - Generate `libreconomy.h` via `cbindgen`
+    - Generate Python/Swift/Kotlin bindings via `uniffi-bindgen generate --library` from the compiled `cdylib`
+    - FAIL if any binding generation step fails
+
+5) Version alignment
+- The Rust `uniffi` crate version and the `uniffi-bindgen` CLI must be aligned (currently 0.28.x).
+- Upgrades to newer uniffi versions must be explicit and include TDD updates to the FFI layer.
+
+6) Examples
+```toml
+# Cargo.toml
+[dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+```
+
+```rust
+// src/lib.rs (crate root)
+uniffi::setup_scaffolding!();
+
+#[uniffi::export]
+pub fn libreconomy_version() -> String { "0.0.1".to_string() }
+
+#[uniffi::export]
+pub fn get_agent_count() -> u32 { 0 }
+```
+
+7) UDL files
+- Optional for documentation only; NOT required for binding generation.
+- Do not block releases on UDL parsing. The canonical source for bindings is the compiled cdylib metadata.
+
+## TESTING ADDENDUM FOR FFI
+
+- Add a minimal FFI smoke test alongside unit tests:
+    - Run the release script (or a binding generation step) in CI.
+    - For Python, import the generated module and call a trivial function (e.g., `libreconomy_version()`).
+- Keep FFI tests simple and fast; do not duplicate domain tests across languages.
+
 ## KEY PRINCIPLE
 
 **If uncertain whether something violates this contract, STOP and ASK the human first.**
