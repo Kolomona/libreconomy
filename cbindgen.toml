@@ -1,0 +1,22 @@
+language = "C"
+
+# Generate a small, stable C header
+pragma_once = true
+include_guard = "LIBRECONOMY_H"
+documentation = false
+usize_is_size_t = true
+cpp_compat = true
+
+# Standard system includes for C consumers
+sys_includes = ["stdint.h", "stdbool.h", "stdlib.h"]
+
+[parse]
+# Restrict parsing to this crate
+parse_deps = false
+
+[export]
+# Default: export public extern "C" functions
+
+# Note: cbindgen 0.27 does not support per-item renaming in config.
+# The generated header will use the Rust item name (e.g., libreconomy_version_c).
+# If an alias is desired, consider a small C macro shim or adjusting the Rust symbol name.

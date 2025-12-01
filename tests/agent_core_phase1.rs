@@ -1,3 +1,44 @@
+#[test]
+fn phase5_register_and_query_agent_components() {
+    use libreconomy::{Agent, Needs, Inventory, Wallet, AgentIdAllocator};
+    use specs::prelude::*;
+
+    // Create ECS world and register agent/core components
+    let mut world = World::new();
+    world.register::<Agent>();
+    world.register::<Needs>();
+    world.register::<Inventory>();
+    world.register::<Wallet>();
+    world.insert(AgentIdAllocator::new());
+
+    // Create several agents
+    let agent1 = libreconomy::create_agent(&mut world);
+    let agent2 = libreconomy::create_agent_with_needs(&mut world, Needs::new(80.0, 20.0));
+    let agent3 = libreconomy::create_agent_with_wallet(&mut world, Wallet::new(500.0));
+
+    // Query all Agent entities
+    let agents = world.read_storage::<Agent>();
+    let entities = world.entities();
+    let mut found_ids: Vec<u64> = (&entities, &agents).join().map(|(_e, a)| a.id.0).collect();
+    found_ids.sort();
+    assert_eq!(found_ids, vec![1, 2, 3]);
+
+    // Query Needs for agent2
+    let needs_storage = world.read_storage::<Needs>();
+    let needs2 = needs_storage.get(agent2).unwrap();
+    assert_eq!(needs2.thirst, 80.0);
+    assert_eq!(needs2.hunger, 20.0);
+
+    // Query Wallet for agent3
+    let wallet_storage = world.read_storage::<Wallet>();
+    let wallet3 = wallet_storage.get(agent3).unwrap();
+    assert_eq!(wallet3.currency, 500.0);
+
+    // Query Inventory for agent1 (should be empty)
+    let inventory_storage = world.read_storage::<Inventory>();
+    let inv1 = inventory_storage.get(agent1).unwrap();
+    assert_eq!(inv1.items.len(), 0);
+}
 use pretty_assertions::assert_eq;
 use specs::prelude::*;
 

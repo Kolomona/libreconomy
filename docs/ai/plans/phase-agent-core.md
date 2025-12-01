@@ -48,8 +48,8 @@ Implement the foundational agent entity and its core components (Needs, Inventor
 - [x] Validate agent removal with unit tests
 
 ## Phase 5: ECS Integration
-- [ ] Register agent and core components with ECS world
-- [ ] Test ECS queries for agents and components
+- [x] Register agent and core components with ECS world
+- [x] Test ECS queries for agents and components
 
 ## Phase 6: Unit Testing
 - [ ] Write unit tests for agent creation

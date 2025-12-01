@@ -114,6 +114,25 @@ fn main() {
 		let removed = inv.remove("water", 3);
 		println!("  After remove(water, 3) -> removed: {}, left: {}", removed, inv.quantity("water"));
 	}
+	{
+		println!("\n--- Phase 5: ECS Integration ---");
+		// Query and print all agent IDs and their components
+		let agents = world.read_storage::<Agent>();
+		let needs_storage = world.read_storage::<Needs>();
+		let wallet_storage = world.read_storage::<Wallet>();
+		let inventory_storage = world.read_storage::<Inventory>();
+		let entities = world.entities();
+		let mut all_ids: Vec<u64> = (&entities, &agents).join().map(|(_e, a)| a.id.0).collect();
+		all_ids.sort();
+		println!("All agent IDs in world: {:?}", all_ids);
+		for (_e, agent) in (&entities, &agents).join() {
+			let needs = needs_storage.get(_e).unwrap();
+			let wallet = wallet_storage.get(_e).unwrap();
+			let inventory = inventory_storage.get(_e).unwrap();
+			println!("Agent {}: thirst={:.1}, hunger={:.1}, wallet={:.1}, inventory={:?}",
+				agent.id.0, needs.thirst, needs.hunger, wallet.currency, inventory.items);
+		}
+	}
 
 	println!("\n--- Phase 4: Agent Removal ---");
 
