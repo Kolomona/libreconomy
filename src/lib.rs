@@ -1,7 +1,49 @@
 //! libreconomy: Cross-platform agent-based economy simulator library
 //!
-//! This library provides modular systems for simulating economic agents, markets, labor, and production.
+//! This library provides modular systems for simulating economic agents using an Entity-Component-System (ECS) architecture.
 //! Designed for games and applications, with FFI support for integration in other languages.
+//!
+//! # Quick Start
+//!
+//! ```rust
+//! use libreconomy::*;
+//! use specs::prelude::*;
+//!
+//! // Create a new ECS world
+//! let mut world = World::new();
+//! 
+//! // Register components
+//! world.register::<Agent>();
+//! world.register::<Needs>();
+//! world.register::<Inventory>();
+//! world.register::<Wallet>();
+//! 
+//! // Insert the AgentId allocator resource
+//! world.insert(AgentIdAllocator::new());
+//! 
+//! // Create an agent with default components
+//! let agent = create_agent(&mut world);
+//! 
+//! // Query the agent's components
+//! let needs_storage = world.read_storage::<Needs>();
+//! let needs = needs_storage.get(agent).unwrap();
+//! println!("Thirst: {}, Hunger: {}", needs.thirst, needs.hunger);
+//! ```
+//!
+//! # Core Concepts
+//!
+//! - **Agents**: Autonomous entities with unique IDs
+//! - **Components**: Data attached to agents (Needs, Inventory, Wallet)
+//! - **ECS World**: Container for all entities and components
+//! - **Systems**: Logic that operates on components (coming soon)
+//!
+//! # FFI Support
+//!
+//! This library supports Foreign Function Interface (FFI) for multiple languages:
+//! - C/C++ via cbindgen
+//! - Python, Swift, Kotlin via uniffi
+//!
+//! For detailed FFI documentation, see `docs/api/FFI.md`
 
 pub mod agent;
 pub use agent::components::*;

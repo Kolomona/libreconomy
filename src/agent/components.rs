@@ -9,6 +9,24 @@ pub const MAX_NEEDS: f32 = 100.0;
 /// Minimum bound for needs values
 pub const MIN_NEEDS: f32 = 0.0;
 
+/// Agent needs component tracking thirst and hunger
+///
+/// Values are automatically clamped between [`MIN_NEEDS`] and [`MAX_NEEDS`].
+///
+/// # Example
+///
+/// ```rust
+/// use libreconomy::{Needs, MIN_NEEDS, MAX_NEEDS};
+///
+/// let needs = Needs::new(50.0, 75.0);
+/// assert_eq!(needs.thirst, 50.0);
+/// assert_eq!(needs.hunger, 75.0);
+///
+/// // Out-of-bounds values are clamped
+/// let clamped = Needs::new(-10.0, 200.0);
+/// assert_eq!(clamped.thirst, MIN_NEEDS);
+/// assert_eq!(clamped.hunger, MAX_NEEDS);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Needs {
     pub thirst: f32,
@@ -33,6 +51,31 @@ impl Component for Needs {
     type Storage = VecStorage<Self>;
 }
 
+/// Agent inventory component for storing items
+///
+/// Maps item IDs (strings) to quantities. Operations are saturating and panic-free.
+///
+/// # Example
+///
+/// ```rust
+/// use libreconomy::Inventory;
+///
+/// let mut inv = Inventory::default();
+/// 
+/// // Add items
+/// inv.add("water", 5);
+/// assert_eq!(inv.quantity("water"), 5);
+///
+/// // Remove items (returns amount actually removed)
+/// let removed = inv.remove("water", 3);
+/// assert_eq!(removed, 3);
+/// assert_eq!(inv.quantity("water"), 2);
+///
+/// // Removing more than available only removes what exists
+/// let removed = inv.remove("water", 10);
+/// assert_eq!(removed, 2);
+/// assert_eq!(inv.quantity("water"), 0);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct Inventory {
     pub items: HashMap<String, u32>, // item_id -> quantity
@@ -75,6 +118,32 @@ impl Component for Inventory {
     type Storage = VecStorage<Self>;
 }
 
+/// Agent wallet component for currency management
+///
+/// Ensures non-negative balance at all times. Negative values are clamped to 0.
+///
+/// # Example
+///
+/// ```rust
+/// use libreconomy::Wallet;
+///
+/// let mut wallet = Wallet::new(100.0);
+/// assert_eq!(wallet.currency, 100.0);
+///
+/// // Deposit funds
+/// wallet.deposit(50.0);
+/// assert_eq!(wallet.currency, 150.0);
+///
+/// // Withdraw funds (returns amount actually withdrawn)
+/// let withdrawn = wallet.withdraw(80.0);
+/// assert_eq!(withdrawn, 80.0);
+/// assert_eq!(wallet.currency, 70.0);
+///
+/// // Cannot withdraw more than available
+/// let withdrawn = wallet.withdraw(100.0);
+/// assert_eq!(withdrawn, 70.0);
+/// assert_eq!(wallet.currency, 0.0);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Wallet {
     pub currency: f32,

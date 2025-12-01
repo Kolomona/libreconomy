@@ -3,11 +3,13 @@
 A cross-platform, agent-based economy simulator library for games and applications.
 
 ## Key Features
-- Agent-based simulation (ECS)
-- Subjective value modeling
-- Modular systems: market, labor, production, decision-making
-- Supports FFI (C/C++, Python, Swift, Kotlin) via cbindgen and uniffi
-- Planned language bindings for easy integration
+- **Agent-based simulation** using Entity-Component-System (ECS) architecture
+- **Core agent components**: Needs (thirst, hunger), Inventory, Wallet
+- **Unique agent identity** with safe ID allocation
+- **Agent lifecycle management** including creation and removal
+- **FFI support** for C/C++ (via cbindgen) and Python/Swift/Kotlin (via uniffi)
+- Subjective value modeling (planned)
+- Market, labor, and production systems (planned)
 
 ## Build Instructions
 ```sh
@@ -16,19 +18,25 @@ cargo build --release
 
 ## Using uniffi for Language Bindings
 
+This project uses uniffi's proc-macro approach for generating language bindings. Functions are exported using the `#[uniffi::export]` attribute in the Rust code.
+
 1. **Build the dynamic library:**
    ```sh
    cargo build --release
    ```
    The shared library will be in `target/release/liblibreconomy.so` (Linux), `liblibreconomy.dylib` (macOS), or `liblibreconomy.dll` (Windows).
 
-2. **Generate bindings with uniffi:**
+2. **Generate bindings from the compiled library:**
    ```sh
-   uniffi-bindgen generate src/libreconomy.udl --language python
-   uniffi-bindgen generate src/libreconomy.udl --language kotlin
-   uniffi-bindgen generate src/libreconomy.udl --language swift
+   uniffi-bindgen generate --library target/release/liblibreconomy.so --language python --out-dir dist
+   uniffi-bindgen generate --library target/release/liblibreconomy.so --language kotlin --out-dir dist
+   uniffi-bindgen generate --library target/release/liblibreconomy.so --language swift --out-dir dist
    ```
-   This creates bindings for Python, Kotlin, and Swift in the respective output directories.
+   Or simply run:
+   ```sh
+   bash scripts/release.sh
+   ```
+   This generates bindings for Python, Kotlin, and Swift in the `dist/` directory.
 
 3. **Example usage in Python:**
    ```python
@@ -37,7 +45,7 @@ cargo build --release
    print(libreconomy.get_agent_count())
    ```
 
-See `uniffi.toml` for configuration and `src/libreconomy.udl` for the API definition.
+See `uniffi.toml` for configuration. The API is defined using `#[uniffi::export]` attributes in the Rust source code.
 
 ## Using in Godot
 
@@ -64,16 +72,46 @@ See `uniffi.toml` for configuration and `src/libreconomy.udl` for the API defini
    printf("libreconomy version: %s\n", version);
    ```
 
+## Current Implementation
+
+The following features are implemented and tested:
+
+- **Agent Entity System**: Unique agent IDs with overflow-safe allocation
+- **Core Components**:
+  - `Needs`: Tracks agent needs (thirst, hunger) with automatic clamping
+  - `Inventory`: Item storage with safe add/remove operations
+  - `Wallet`: Currency balance with non-negative guarantees
+- **Agent Creation**: Multiple creation functions for different configurations
+- **Agent Removal**: Clean deletion of agents and their components
+- **ECS Integration**: Full registration and query support for all components
+
+## Examples
+
+Run the basic simulation example to see agents in action:
+
+```bash
+cargo run --example basic_simulation
+```
+
+This demonstrates agent creation, component manipulation, and ECS queries.
+
 ## Status
-Early development. API and features subject to change.
 
-## Directory Structure
-See source tree for module layout. Each system is modular and pluggable.
+Early development. Core agent systems are functional. API may change as additional systems are added.
 
-## TODO
-- Implement core simulation systems
-- Add more examples
-- Expand FFI support
+## Roadmap
+
+- Market systems (trading, pricing)
+- Labor systems (employment, gigs, contracts)
+- Production systems (crafting, resource transformation)
+- Decision-making traits and implementations
+- More agent components (skills, knowledge, preferences)
+
+## Documentation
+
+- **User Guide**: See [`docs/GUIDE.md`](docs/GUIDE.md) for tutorials and common patterns
+- **API Reference**: Run `cargo doc --open` to view full API documentation
+- **FFI Integration**: See [`docs/api/FFI.md`](docs/api/FFI.md) for using from C/C++, Python, Swift, or Kotlin
 
 ## Testing
 

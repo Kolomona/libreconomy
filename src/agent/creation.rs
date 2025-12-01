@@ -19,6 +19,23 @@ const DEFAULT_CURRENCY: f32 = 100.0;
 /// - Inventory: empty
 /// - Wallet: currency=100.0
 ///
+/// # Example
+///
+/// ```rust
+/// use libreconomy::*;
+/// use specs::prelude::*;
+///
+/// let mut world = World::new();
+/// world.register::<Agent>();
+/// world.register::<Needs>();
+/// world.register::<Inventory>();
+/// world.register::<Wallet>();
+/// world.insert(AgentIdAllocator::new());
+///
+/// let agent = create_agent(&mut world);
+/// assert!(world.entities().is_alive(agent));
+/// ```
+///
 /// # Panics
 /// Panics if AgentIdAllocator resource is not registered in the world
 /// Panics if required component types are not registered
