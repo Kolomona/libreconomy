@@ -139,6 +139,78 @@ mod ecs_missing_components_tests {
 }
 
 #[cfg(test)]
+mod phase3_agent_creation_tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_create_agent_default() {
+        // Test basic agent creation function
+        let mut world = World::new();
+        world.register::<Agent>();
+        world.register::<Needs>();
+        world.register::<Inventory>();
+        world.register::<Wallet>();
+        world.insert(AgentIdAllocator::new());
+
+        let entity = create_agent(&mut world);
+
+        assert!(world.entities().is_alive(entity));
+        let agents = world.read_storage::<Agent>();
+        let agent = agents.get(entity).unwrap();
+        assert_eq!(agent.id, AgentId(1));
+    }
+
+    #[test]
+    fn test_create_multiple_agents_showcase() {
+        // Showcase creating multiple agents with different configurations
+        let mut world = World::new();
+        world.register::<Agent>();
+        world.register::<Needs>();
+        world.register::<Inventory>();
+        world.register::<Wallet>();
+        world.insert(AgentIdAllocator::new());
+
+        // Create agent with defaults
+        let agent1 = create_agent(&mut world);
+
+        // Create agent with custom needs (thirsty)
+        let agent2 = create_agent_with_needs(&mut world, Needs::new(90.0, 50.0));
+
+        // Create agent with custom wallet (rich)
+        let agent3 = create_agent_with_wallet(&mut world, Wallet::new(1000.0));
+
+        // Create fully custom agent
+        let mut inventory = Inventory::default();
+        inventory.add("water", 10);
+        inventory.add("food", 5);
+        let agent4 = create_agent_custom(
+            &mut world,
+            Needs::new(20.0, 30.0),
+            inventory,
+            Wallet::new(500.0),
+        );
+
+        // Verify all agents exist and have unique IDs
+        let agents = world.read_storage::<Agent>();
+        assert_eq!(agents.get(agent1).unwrap().id, AgentId(1));
+        assert_eq!(agents.get(agent2).unwrap().id, AgentId(2));
+        assert_eq!(agents.get(agent3).unwrap().id, AgentId(3));
+        assert_eq!(agents.get(agent4).unwrap().id, AgentId(4));
+
+        // Verify custom properties
+        let needs = world.read_storage::<Needs>();
+        assert_eq!(needs.get(agent2).unwrap().thirst, 90.0);
+
+        let wallets = world.read_storage::<Wallet>();
+        assert_eq!(wallets.get(agent3).unwrap().currency, 1000.0);
+
+        let inventories = world.read_storage::<Inventory>();
+        assert_eq!(inventories.get(agent4).unwrap().quantity("water"), 10);
+    }
+}
+
+#[cfg(test)]
 mod godot_ffi_tests {
     #[test]
     fn test_godot_ffi_entrypoint() {

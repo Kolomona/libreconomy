@@ -6,6 +6,7 @@
 pub mod agent;
 pub use agent::components::*;
 pub use agent::identity::{AgentId, AgentIdAllocator, AgentIdError};
+pub use agent::creation::{create_agent, create_agent_with_needs, create_agent_with_wallet, create_agent_custom};
 #[export_name = "libreconomy_version"]
 pub extern "C" fn libreconomy_version_c() -> *const u8 {
     b"libreconomy 0.0.1\0".as_ptr()

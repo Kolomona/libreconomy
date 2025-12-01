@@ -27,9 +27,20 @@ Implement the foundational agent entity and its core components (Needs, Inventor
 	- Unit tests validate creation, deposit/withdraw semantics
 
 ## Phase 3: Agent Creation Logic
-- [ ] Implement agent creation function
-- [ ] Assign default components to new agents
-- [ ] Validate agent creation with unit tests
+- [x] Implement agent creation function
+	- Added `create_agent()` for creating agents with default components
+	- Added `create_agent_with_needs()` for custom needs
+	- Added `create_agent_with_wallet()` for custom wallet
+	- Added `create_agent_custom()` for fully customized agents
+	- Default values: thirst=50.0, hunger=50.0, currency=100.0, empty inventory
+- [x] Assign default components to new agents
+	- All creation functions automatically assign Agent, Needs, Inventory, and Wallet components
+	- AgentId is automatically allocated from AgentIdAllocator resource
+- [x] Validate agent creation with unit tests
+	- Unit tests in `src/agent/creation.rs` module
+	- Integration tests in `tests/agent_creation_phase3.rs`
+	- Example showcase tests in `tests/basic_simulation.rs`
+	- Updated `examples/basic_simulation.rs` to demonstrate Phase 3 functionality
 
 ## Phase 4: Agent Lifecycle Management
 - [ ] Implement agent removal function
