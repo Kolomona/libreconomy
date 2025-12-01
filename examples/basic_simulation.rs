@@ -6,7 +6,7 @@ use libreconomy::{
 use specs::prelude::*;
 
 fn main() {
-	println!("=== libreconomy Basic Simulation (Phases 1-3) ===\n");
+	println!("=== libreconomy Basic Simulation (Phases 1-4) ===\n");
 
 	let mut world = World::new();
 	world.register::<Agent>();
@@ -113,6 +113,19 @@ fn main() {
 		println!("  Inventory after add(water, 2): water={}", inv.quantity("water"));
 		let removed = inv.remove("water", 3);
 		println!("  After remove(water, 3) -> removed: {}, left: {}", removed, inv.quantity("water"));
+	}
+
+	println!("\n--- Phase 4: Agent Removal ---");
+
+	// Remove agent2 (thirsty) and verify removal
+	use libreconomy::remove_agent;
+	println!("Removing agent2 (thirsty): {:?}", agent2);
+	remove_agent(&mut world, agent2);
+	let agents = world.read_storage::<Agent>();
+	if agents.get(agent2).is_none() {
+		println!("  agent2 successfully removed from world.");
+	} else {
+		println!("  ERROR: agent2 still exists!");
 	}
 
 	println!("\n=== Simulation Complete ===");

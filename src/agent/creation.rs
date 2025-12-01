@@ -96,6 +96,24 @@ pub fn create_agent_custom(
         .build()
 }
 
+/// Remove an agent entity and all its components from the ECS world
+///
+/// # Arguments
+/// * `world` - ECS world
+/// * `entity` - Agent entity to remove
+///
+/// # Panics
+/// Panics if entity does not exist
+pub fn remove_agent(world: &mut World, entity: Entity) {
+    // Remove all components
+    world.write_storage::<Agent>().remove(entity);
+    world.write_storage::<Needs>().remove(entity);
+    world.write_storage::<Inventory>().remove(entity);
+    world.write_storage::<Wallet>().remove(entity);
+    // Remove entity itself
+    world.delete_entity(entity).expect("Failed to delete agent entity");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

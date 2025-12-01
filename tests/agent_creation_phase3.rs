@@ -7,6 +7,37 @@ use specs::prelude::*;
 use libreconomy::{Agent, AgentId, AgentIdAllocator, Needs, Inventory, Wallet};
 
 #[test]
+fn test_remove_agent_from_world() {
+    // Arrange
+    let mut world = World::new();
+    world.register::<Agent>();
+    world.register::<Needs>();
+    world.register::<Inventory>();
+    world.register::<Wallet>();
+    world.insert(AgentIdAllocator::new());
+
+    // Create agent
+    let entity = libreconomy::create_agent(&mut world);
+    assert!(world.entities().is_alive(entity));
+
+    // Remove agent (should use new function)
+    // This will fail until implemented
+    libreconomy::remove_agent(&mut world, entity);
+
+    // Assert: Entity no longer exists
+    assert!(!world.entities().is_alive(entity));
+    // Assert: Components are removed
+    let agents = world.read_storage::<Agent>();
+    assert!(agents.get(entity).is_none());
+    let needs = world.read_storage::<Needs>();
+    assert!(needs.get(entity).is_none());
+    let inventory = world.read_storage::<Inventory>();
+    assert!(inventory.get(entity).is_none());
+    let wallet = world.read_storage::<Wallet>();
+    assert!(wallet.get(entity).is_none());
+}
+
+#[test]
 fn test_create_agent_with_default_components() {
     // Arrange
     let mut world = World::new();

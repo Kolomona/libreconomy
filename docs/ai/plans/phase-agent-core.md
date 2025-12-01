@@ -43,9 +43,9 @@ Implement the foundational agent entity and its core components (Needs, Inventor
 	- Updated `examples/basic_simulation.rs` to demonstrate Phase 3 functionality
 
 ## Phase 4: Agent Lifecycle Management
-- [ ] Implement agent removal function
-- [ ] Ensure ECS world updates on agent removal
-- [ ] Validate agent removal with unit tests
+- [x] Implement agent removal function
+- [x] Ensure ECS world updates on agent removal
+- [x] Validate agent removal with unit tests
 
 ## Phase 5: ECS Integration
 - [ ] Register agent and core components with ECS world
