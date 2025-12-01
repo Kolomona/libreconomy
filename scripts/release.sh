@@ -4,6 +4,11 @@ set -euo pipefail
 # Build release
 cargo build --release
 
+# Build Rust API documentation (no dependencies)
+echo "Generating Rust documentation..."
+cargo doc --no-deps
+echo "Documentation generated in target/doc/"
+
 # Generate C header
 cbindgen --config cbindgen.toml --crate libreconomy --output libreconomy.h
 
@@ -34,6 +39,16 @@ cp src/libreconomy.udl dist/
 cp -r python/ dist/ 2>/dev/null || true
 cp -r kotlin/ dist/ 2>/dev/null || true
 cp -r swift/ dist/ 2>/dev/null || true
+
+# Package documentation
+if [ -d "target/doc" ]; then
+	echo "Packaging documentation..."
+	rm -rf dist/docs
+	mkdir -p dist/docs
+	cp -r target/doc/* dist/docs/
+else
+	echo "Warning: target/doc not found; documentation may have failed to build."
+fi
 
 # Print summary
 ls -lh dist/
