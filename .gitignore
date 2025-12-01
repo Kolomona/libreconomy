@@ -6,20 +6,11 @@ commit_message.txt
 Cargo.lock
 
 # Build artifacts
-*.so
-*.dylib
-*.dll
-*.exe
-*.bin
-*.h
 *.pyc
 *.class
 
-# Uniffi generated bindings
-*.py
-*.swift
-*.kt
-*.kts
+# Release packaging
+/dist/
 
 # IDE/editor
 .vscode/
@@ -37,7 +28,6 @@ Cargo.lock
 /tests/output/
 
 # Cbindgen
-cbindgen.toml
 libreconomy.h
 
 # Misc
