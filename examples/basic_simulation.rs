@@ -1,4 +1,4 @@
-use libreconomy::{Agent, AgentIdAllocator, Inventory, Needs, Skills, Wallet};
+use libreconomy::{Agent, AgentIdAllocator, Inventory, Needs, Skills, Wallet, MIN_NEEDS, MAX_NEEDS};
 use specs::prelude::*;
 
 fn main() {
@@ -18,14 +18,37 @@ fn main() {
 		alloc.allocate().expect("allocate AgentId")
 	};
 
+	// Create an Agent with Phase 2 helpers
 	let agent = world.create_entity()
-		.with(Needs { thirst: 0.5, hunger: 0.8 })
-		.with(Inventory { items: std::collections::HashMap::new() })
-		.with(Wallet { currency: 100.0 })
-		.with(Skills { skills: std::collections::HashMap::new() })
+		.with(Needs::new(-1.0, 200.0)) // intentionally out of bounds to demonstrate clamping
+		.with(Inventory::default())
+		.with(Wallet::new(-10.0)) // negative becomes zero
+		.with(Skills::default())
 		.with(Agent { id })
 		.build();
 
 	println!("Created agent: {:?}", agent);
+
+	// Demonstrate Needs clamping
+	let needs = world.read_storage::<Needs>().get(agent).unwrap().clone();
+	println!("Needs after clamp -> thirst: {:.1} (min {}), hunger: {:.1} (max {})", needs.thirst, MIN_NEEDS, needs.hunger, MAX_NEEDS);
+
+	// Demonstrate Wallet operations
+	{
+		let mut wallets = world.write_storage::<Wallet>();
+		let w = wallets.get_mut(agent).unwrap();
+		w.deposit(5.0);
+		let taken = w.withdraw(10.0);
+		println!("Wallet -> balance: {:.1}, withdrew: {:.1}", w.currency, taken);
+	}
+
+	// Demonstrate Inventory operations
+	{
+		let mut invs = world.write_storage::<Inventory>();
+		let inv = invs.get_mut(agent).unwrap();
+		inv.add("water", 2);
+		let removed = inv.remove("water", 3);
+		println!("Inventory -> water left: {}, removed: {}", inv.quantity("water"), removed);
+	}
 }
 

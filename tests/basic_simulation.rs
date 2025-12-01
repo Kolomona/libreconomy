@@ -11,10 +11,10 @@ fn test_create_world_with_agents() {
     world.register::<Skills>();
 
     let agent = world.create_entity()
-        .with(Needs { thirst: 0.5, hunger: 0.8 })
-        .with(Inventory { items: std::collections::HashMap::new() })
-        .with(Wallet { currency: 100.0 })
-        .with(Skills { skills: std::collections::HashMap::new() })
+        .with(Needs::new(0.5, 0.8))
+        .with(Inventory::default())
+        .with(Wallet::new(100.0))
+        .with(Skills::default())
         .build();
 
     assert!(world.entities().is_alive(agent));
@@ -38,13 +38,13 @@ fn test_example_agent_creation_pattern() {
         alloc.allocate().expect("allocate AgentId")
     };
 
-    // Create one Agent entity with the allocated id
-    let _e = world
+    // Create one Agent entity with the allocated id (use helpers)
+    let e = world
         .create_entity()
-        .with(Needs { thirst: 0.1, hunger: 0.2 })
-        .with(Inventory { items: std::collections::HashMap::new() })
-        .with(Wallet { currency: 10.0 })
-        .with(Skills { skills: std::collections::HashMap::new() })
+        .with(Needs::new(-1.0, 200.0))
+        .with(Inventory::default())
+        .with(Wallet::new(-10.0))
+        .with(Skills::default())
         .with(Agent { id })
         .build();
 
@@ -54,6 +54,34 @@ fn test_example_agent_creation_pattern() {
     let mut ids: Vec<AgentId> = (&entities, &storage).join().map(|(_e, a)| a.id).collect();
     assert_eq!(ids.len(), 1);
     assert!(ids.pop().unwrap().0 > 0);
+
+    // Verify components behave per Phase 2 helpers
+    {
+        let needs_storage = world.read_storage::<Needs>();
+        let needs = needs_storage.get(e).unwrap();
+        assert_eq!(needs.thirst, MIN_NEEDS);
+        assert_eq!(needs.hunger, MAX_NEEDS);
+    }
+    {
+        let mut wallet_storage = world.write_storage::<Wallet>();
+        let wallet = wallet_storage.get_mut(e).unwrap();
+        assert_eq!(wallet.currency, 0.0);
+        wallet.deposit(5.0);
+        assert_eq!(wallet.currency, 5.0);
+        let taken = wallet.withdraw(10.0);
+        assert_eq!(taken, 5.0);
+        assert_eq!(wallet.currency, 0.0);
+    }
+    {
+        let mut inv_storage = world.write_storage::<Inventory>();
+        let inv = inv_storage.get_mut(e).unwrap();
+        assert_eq!(inv.quantity("water"), 0);
+        inv.add("water", 2);
+        assert_eq!(inv.quantity("water"), 2);
+        let removed = inv.remove("water", 3);
+        assert_eq!(removed, 2);
+        assert_eq!(inv.quantity("water"), 0);
+    }
 }
 
 #[test]

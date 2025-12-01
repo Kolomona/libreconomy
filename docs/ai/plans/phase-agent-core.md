@@ -13,9 +13,18 @@ Implement the foundational agent entity and its core components (Needs, Inventor
 	- Added simple unit tests validating uniqueness and ECS registration
 
 ## Phase 2: Core Agent Components
-- [ ] Implement Needs component (thirst, hunger)
-- [ ] Implement Inventory component (references to Item entities)
-- [ ] Implement Wallet component (currency balance)
+- [x] Implement Needs component (thirst, hunger)
+	- Added `Needs` with serde support and clamp helpers
+	- Introduced `MIN_NEEDS`/`MAX_NEEDS` constants and simple decay-safe clamping
+	- Unit tests validate clamping and bounds
+- [x] Implement Inventory component (references to Item entities)
+	- Implemented `Inventory` as item_id -> quantity map with safe add/remove
+	- Accessors avoid panics and return 0 for missing items
+	- Unit tests validate add/remove saturation and zero behavior
+- [x] Implement Wallet component (currency balance)
+	- Implemented `Wallet` with non-negative balance guarantees
+	- Safe `deposit`/`withdraw` that ignore invalid inputs and prevent negatives
+	- Unit tests validate creation, deposit/withdraw semantics
 
 ## Phase 3: Agent Creation Logic
 - [ ] Implement agent creation function
