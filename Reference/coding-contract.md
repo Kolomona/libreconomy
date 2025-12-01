@@ -67,10 +67,111 @@ proptest! {
 ```
 
 ### 7. DOCUMENTATION (MANDATORY)
-- All public APIs documented with `///`
-- Module-level docs with `//!`
-- Examples in docs for complex functions
-- Update README.md for breaking changes
+
+Documentation follows a multi-layered approach. All layers are required.
+
+#### 7.1 Inline Rust Documentation (PRIMARY - cargo doc)
+```rust
+//! Module-level documentation
+//! 
+//! Explains module purpose, core concepts, usage patterns.
+//! Include quick-start example demonstrating typical usage.
+
+/// Function documentation
+///
+/// # Arguments
+/// * `param` - Description of parameter
+///
+/// # Example
+/// ```
+/// use libreconomy::*;
+/// let result = function_name(param);
+/// ```
+///
+/// # Panics
+/// Document panic conditions
+///
+/// # Errors  
+/// Document error conditions for Result types
+pub fn function_name(param: Type) -> ReturnType { }
+```
+
+**Rules:**
+- All public items (`pub`) MUST have `///` documentation
+- All modules MUST have `//!` documentation at top
+- Complex functions MUST include working examples in docs
+- Doc examples MUST be tested (`cargo test --doc` must pass)
+- Use `# Example` section liberally for non-trivial APIs
+- Document panic conditions with `# Panics`
+- Document error cases with `# Errors` for Result types
+
+#### 7.2 User Guide (docs/GUIDE.md)
+**Purpose:** Narrative tutorials, not API reference duplication
+
+**Required sections:**
+- Quick Start (copy-paste working example)
+- Core Concepts (ECS, agents, components)
+- Common Patterns (how to do X, Y, Z)
+- Working examples that demonstrate workflow
+
+**Rules:**
+- Do NOT duplicate API docs - link to `cargo doc` instead
+- Focus on teaching concepts and patterns
+- All code examples must be complete and runnable
+- Update when adding major features or changing workflows
+
+#### 7.3 FFI Documentation (docs/api/FFI.md)
+**Purpose:** Non-Rust language integration
+
+**Required sections per language:**
+- Build instructions
+- Complete working example
+- Platform-specific notes (iOS, Android, etc.)
+- Linking/deployment instructions
+- Troubleshooting common issues
+
+**Rules:**
+- Update when FFI surface changes
+- Include examples in target language (Python, Swift, Kotlin)
+- Document platform-specific quirks
+- Keep synchronized with uniffi exports
+
+#### 7.4 README.md
+**Purpose:** Project overview and navigation hub
+
+**Required content:**
+- Current implementation status (what works NOW)
+- Quick example showcasing core functionality
+- Links to all documentation layers
+- Clear roadmap (what's planned)
+
+**Rules:**
+- Update when completing major features/phases
+- Keep "Current Implementation" section accurate
+- Do NOT document future features as if they exist
+- Link to other docs, don't duplicate them
+
+#### 7.5 Documentation Testing
+```bash
+# All must pass before commit:
+cargo test --doc          # Test inline examples
+cargo doc --no-deps       # Verify docs build without errors
+```
+
+#### 7.6 Documentation Updates Required When:
+- Adding public API → Inline docs + User Guide update
+- Changing FFI surface → FFI.md update
+- Completing major feature → README.md "Current Implementation" update
+- Breaking changes → All affected docs + README.md
+- New usage patterns → User Guide update
+
+#### 7.7 Documentation Anti-Patterns (FORBIDDEN)
+❌ Duplicating API details in multiple places (causes drift)
+❌ Manual API docs in docs/api/ folder (use cargo doc)
+❌ Documenting planned features as implemented
+❌ Untested code examples in documentation
+❌ Vague descriptions without examples for complex APIs
+❌ Missing panic/error documentation
 
 ### 8. NAMING & STYLE (STRICT)
 ```rust
@@ -95,11 +196,17 @@ mod module_name;              // snake_case
 Before any code submission, verify:
 - [ ] Tests written BEFORE implementation
 - [ ] All tests pass (`cargo test`)
+- [ ] Doc tests pass (`cargo test --doc`)
+- [ ] Documentation builds (`cargo doc --no-deps`)
 - [ ] Property tests added for numeric logic
 - [ ] No unwrap/panic/expect in library code
 - [ ] Uses Result<T, E> for fallible operations
 - [ ] Follows ECS pattern (Components + Systems)
-- [ ] Public APIs documented
+- [ ] All public APIs have `///` documentation with examples
+- [ ] Module has `//!` documentation
+- [ ] docs/GUIDE.md updated if workflow/patterns changed
+- [ ] docs/api/FFI.md updated if FFI surface changed
+- [ ] README.md updated if major feature completed
 - [ ] Uses type-safe wrappers (AgentId, not u64)
 - [ ] Feature flags used for optional code
 - [ ] Benchmarks added if performance-critical
