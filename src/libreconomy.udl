@@ -1,0 +1,5 @@
+namespace libreconomy;
+
+// Example API for TDD: version and agent_count
+string libreconomy_version();
+uint32 get_agent_count();

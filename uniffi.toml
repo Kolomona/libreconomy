@@ -1,0 +1,8 @@
+[bindings]
+languages = ["python", "kotlin", "swift"]
+
+[udl]
+path = "src/libreconomy.udl"
+
+[options]
+cdylib = true

@@ -1,0 +1,43 @@
+# Rust/Cargo
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Build artifacts
+*.so
+*.dylib
+*.dll
+*.exe
+*.bin
+*.h
+*.pyc
+*.class
+
+# Uniffi generated bindings
+*.py
+*.swift
+*.kt
+*.kts
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+
+# Logs and temp
+*.log
+*.tmp
+.DS_Store
+
+# Test output
+/tests/output/
+
+# Cbindgen
+cbindgen.toml
+libreconomy.h
+
+# Misc
+node_modules/
+__pycache__/
