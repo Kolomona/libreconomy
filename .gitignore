@@ -1,5 +1,5 @@
 commit_message.txt
-
+.env
 # Rust/Cargo
 /target/
 **/*.rs.bk

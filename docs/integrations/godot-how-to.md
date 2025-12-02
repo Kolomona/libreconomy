@@ -135,32 +135,87 @@ Copy these into your project under `res://native/libreconomy/`:
 - `dist/godot4/bridge/libreconomy.gdextension` (config)
 
 ## 9. Using the Extension from GDScript
+
+The bridge exposes a `LibreWorld` class that manages the entire ECS world and provides agent management.
+
 Example script `scripts/test_libreconomy.gd`:
 
 ```gdscript
 extends Node
 
+var world: LibreWorld
+
 func _ready():
-    var sim = LibreEconomy.new()
-    print("LibreEconomy version: %s" % sim.version())
-    print("Agents: %d" % sim.agent_count())
+    # Create a new simulation world
+    world = LibreWorld.new()
+    print("LibreEconomy version: %s" % world.get_version())
+    
+    # Create agents with different configurations
+    var agent1 = world.create_agent()  # Default: thirst=50, hunger=50, currency=100
+    var agent2 = world.create_agent_with_needs(90.0, 40.0)  # Very thirsty agent
+    var agent3 = world.create_agent_with_wallet(1000.0)  # Wealthy agent
+    var agent4 = world.create_agent_full(75.0, 25.0, 500.0)  # Fully custom
+    
+    print("Created %d agents" % world.get_agent_count())
+    print("Agent IDs: %d, %d, %d, %d" % [agent1, agent2, agent3, agent4])
+    
+    # Remove an agent
+    if world.remove_agent(agent2):
+        print("Removed agent %d" % agent2)
+    
+    print("Remaining agents: %d" % world.get_agent_count())
+
+func _exit_tree():
+    # World is automatically cleaned up when LibreWorld is freed
+    world = null
 ```
 
-Attach to a scene, run, and inspect the output. Extend the bridge with more methods as needed.
+Attach to a scene, run, and inspect the console output.
 
-## 10. Exposing More Functionality
-When extending:
-1. Ensure the Rust function is `pub extern "C"` (or exported via Uniffi if you re-route) and present in `libreconomy.h`.
-2. Add a corresponding C++ method in `LibreEconomy` that marshals types (e.g., arrays → PackedInt32Array, strings → `String`).
-3. Bind with `ClassDB::bind_method`.
-4. Rebuild the extension.
+### Available Methods
 
-For collections/components, consider creating additional wrapper classes (e.g., `AgentHandle`, `InventoryView`) to keep the API clean.
+- `get_version()` → String - Library version
+- `create_agent()` → int - Create agent with defaults (thirst=50, hunger=50, currency=100)
+- `create_agent_with_needs(thirst: float, hunger: float)` → int - Custom needs
+- `create_agent_with_wallet(currency: float)` → int - Custom starting currency
+- `create_agent_full(thirst: float, hunger: float, currency: float)` → int - All custom parameters
+- `remove_agent(entity_id: int)` → bool - Remove agent, returns true on success
+- `get_agent_count()` → int - Total number of agents in the world
 
-## 11. Hot Reload & Rebuild Loop
-- Change Rust code → `bash scripts/release.sh` (rebuilds lib and updates dist/godot4)
-- Re-run `scons -C dist/godot4/bridge` if headers or ABI changed
-- Restart Godot editor if symbols don’t refresh
+## 10. Extending the API
+
+The current bridge provides basic agent lifecycle management. To expose more functionality:
+
+### Add to Rust FFI (`src/ffi/mod.rs`)
+1. Export new functions with `#[no_mangle] pub extern "C"`
+2. Use `WorldHandle` pointer and simple C types (numbers, strings as `*const c_char`)
+3. Rebuild to regenerate `libreconomy.h` via cbindgen
+
+### Update Bridge (`dist/godot4/bridge/libreconomy_bridge.cpp`)
+1. Add new methods to `LibreWorld` class
+2. Call the C functions using `::function_name(world_ptr, ...)`
+3. Bind with `ClassDB::bind_method` in `_bind_methods()`
+4. Marshal Godot types: `String` ↔ char*, `Array` ↔ arrays, etc.
+
+### Rebuild
+```bash
+bash scripts/release.sh
+```
+
+The script regenerates the header, updates the bridge template, and recompiles automatically if `GODOT_CPP_DIR` is set.
+
+## 11. Development Workflow
+
+### Adding New Features
+1. Implement in Rust (`src/agent/`, `src/ffi/mod.rs`)
+2. Run `bash scripts/release.sh` (rebuilds lib, regenerates header, updates bridge, compiles)
+3. Copy updated `.so` files to your Godot project
+4. Restart Godot editor to reload symbols
+
+### Hot Reload Notes
+- Godot may cache GDExtension symbols; restart the editor after updating the bridge
+- If you only change Rust logic (not FFI signatures), just replace `liblibreconomy.so`
+- If you change C function signatures, the full rebuild is necessary
 
 ## 12. Versioning & Stability
 Track a Rust-side semantic version and expose it via a function like `libreconomy_version()`. Increment when the C ABI changes. Godot scripts can assert compatibility.
@@ -206,3 +261,186 @@ If embedding Python, Kotlin, or Swift (e.g., via custom modules), you can also u
 
 ---
 **Maintenance Reminder:** Re-run `scripts/release.sh` whenever public Rust API changes, then rebuild the GDExtension to keep headers and symbols in sync.
+
+
+
+---
+Step-by-Step Integration
+1. Build the Library and Bridge
+First, make sure everything is built:
+
+```
+cd /home/hapa/k/code/ai/Vibe/libreconomy/libreconomy
+bash scripts/release.sh
+```
+
+This should output:
+
+liblibreconomy.so - The Rust library
+libreconomy_gdextension.so - The Godot bridge
+libreconomy.gdextension - The GDExtension config
+2. Set Up Your Godot Project Structure
+In your Godot project, create this folder structure:
+
+```
+cd /path/to/your/godot/project
+mkdir -p addons/libreconomy
+```
+
+3. Copy the Files
+Copy the three required files:
+
+```
+# Copy the Rust library
+cp /home/hapa/k/code/ai/Vibe/libreconomy/libreconomy/dist/godot4/lib/liblibreconomy.so \
+   addons/libreconomy/
+
+# Copy the Godot bridge
+cp /home/hapa/k/code/ai/Vibe/libreconomy/libreconomy/dist/godot4/build/libreconomy_gdextension.so \
+   addons/libreconomy/
+
+# Copy the GDExtension config
+cp /home/hapa/k/code/ai/Vibe/libreconomy/libreconomy/dist/godot4/bridge/libreconomy.gdextension \
+   addons/libreconomy/
+```
+
+
+4. Verify the .gdextension File
+Open addons/libreconomy/libreconomy.gdextension and make sure the paths are correct:
+
+```
+[configuration]
+entry_symbol = "libreconomy_library_init"
+
+[libraries]
+linux.debug.x86_64 = "res://addons/libreconomy/libreconomy_gdextension.so"
+linux.release.x86_64 = "res://addons/libreconomy/libreconomy_gdextension.so"
+```
+
+5. Restart Godot
+Close and reopen your Godot project. Godot should automatically detect the GDExtension.
+
+6. Create a Test Script
+In Godot, create a new Node (any type) and attach a new script to it:
+
+```
+# test_libreconomy.gd
+extends Node
+
+func _ready():
+    print("=== Testing LibreEconomy ===")
+    
+    # Create a world
+    var world = LibreWorld.new()
+    print("LibreWorld created")
+    
+    # Test version
+    var version = world.get_version()
+    print("Library version: ", version)
+    
+    # Test agent creation with defaults
+    var agent1 = world.create_agent()
+    print("Created agent 1 (default): ", agent1)
+    
+    # Test agent creation with custom needs
+    var agent2 = world.create_agent_with_needs(75.0, 25.0)
+    print("Created agent 2 (thirst=75, hunger=25): ", agent2)
+    
+    # Test agent creation with wallet
+    var agent3 = world.create_agent_with_wallet(500.0)
+    print("Created agent 3 (currency=500): ", agent3)
+    
+    # Test agent creation with all parameters
+    var agent4 = world.create_agent_full(90.0, 10.0, 1000.0)
+    print("Created agent 4 (full params): ", agent4)
+    
+    # Check agent count
+    var count = world.get_agent_count()
+    print("Total agents: ", count)
+    assert(count == 4, "Should have 4 agents")
+    
+    # Test agent removal
+    world.remove_agent(agent2)
+    count = world.get_agent_count()
+    print("Agents after removal: ", count)
+    assert(count == 3, "Should have 3 agents after removal")
+    
+    print("=== All tests passed! ===")
+```
+
+
+7. Run the Scene
+Press F6 (or click "Run Current Scene") and check the Output panel. You should see:
+
+```
+=== Testing LibreEconomy ===
+LibreWorld created
+Library version: libreconomy 0.0.1
+Created agent 1 (default): 0
+Created agent 2 (thirst=75, hunger=25): 1
+Created agent 3 (currency=500): 2
+Created agent 4 (full params): 3
+Total agents: 4
+Agents after removal: 3
+=== All tests passed! ===
+```
+
+8. Troubleshooting
+If you see "LibreWorld is not a recognized class":
+
+Make sure you restarted Godot after copying the files
+Check that all three files are in addons/libreconomy/
+Verify the .gdextension file has correct paths
+If you see "Cannot load library" errors:
+
+Check that both .so files are in the same directory
+Verify you're running on Linux x86_64
+Check file permissions: chmod +x addons/libreconomy/*.so
+If you get runtime crashes:
+
+Check the Godot console for error messages
+Verify GODOT_CPP_DIR pointed to the correct godot-cpp build
+Rebuild: bash scripts/release.sh
+9. More Complex Test (Optional)
+Create a more visual test by spawning Node2D objects for each agent:
+
+```
+extends Node2D
+
+var world: LibreWorld
+var agent_nodes = {}
+
+func _ready():
+    world = LibreWorld.new()
+    print("Version: ", world.get_version())
+    
+    # Spawn 10 agents visually
+    for i in range(10):
+        var agent_id = world.create_agent()
+        spawn_agent_visual(agent_id)
+    
+    print("Created ", world.get_agent_count(), " agents")
+
+func spawn_agent_visual(agent_id: int):
+    var sprite = Sprite2D.new()
+    sprite.texture = preload("res://icon.svg")  # Use Godot's default icon
+    sprite.position = Vector2(randf() * 800, randf() * 600)
+    sprite.scale = Vector2(0.1, 0.1)
+    add_child(sprite)
+    agent_nodes[agent_id] = sprite
+
+func _input(event):
+    if event is InputEventMouseButton and event.pressed:
+        # Remove a random agent on click
+        if world.get_agent_count() > 0:
+            var agent_ids = agent_nodes.keys()
+            var random_id = agent_ids[randi() % agent_ids.size()]
+            world.remove_agent(random_id)
+            agent_nodes[random_id].queue_free()
+            agent_nodes.erase(random_id)
+            print("Removed agent ", random_id, ". Remaining: ", world.get_agent_count())
+```
+
+This creates visual representations of agents and lets you click to remove them.
+
+That's it! You now have a working integration of libreconomy in your Godot project. The library is ready for you to build economic simulation features on top of.

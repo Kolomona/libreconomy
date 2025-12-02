@@ -46,15 +46,24 @@
 //! For detailed FFI documentation, see `docs/api/FFI.md`
 
 pub mod agent;
+pub mod ffi;
+
 pub use agent::components::*;
 pub use agent::identity::{AgentId, AgentIdAllocator, AgentIdError};
 pub use agent::creation::{create_agent, create_agent_with_needs, create_agent_with_wallet, create_agent_custom, remove_agent};
+
+// C FFI exports
+pub use ffi::{WorldHandle, create_world, destroy_world, create_agent_default, 
+              create_agent_with_needs as ffi_create_agent_with_needs,
+              create_agent_with_wallet as ffi_create_agent_with_wallet,
+              create_agent_full, remove_agent as ffi_remove_agent, 
+              get_agent_count as ffi_get_agent_count};
+
 #[export_name = "libreconomy_version"]
 pub extern "C" fn libreconomy_version_c() -> *const u8 {
     b"libreconomy 0.0.1\0".as_ptr()
 }
 // TODO: Add core simulation systems and API
-// TODO: Add more FFI functions for simulation control
 
 // Uniffi bindings are generated from proc-macro metadata via the CLI in release.
 // Declare a component to collect exported items under a namespace for metadata.

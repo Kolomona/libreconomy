@@ -56,6 +56,24 @@ Implement the foundational agent entity and its core components (Needs, Inventor
 - [ ] Write unit tests for component assignment
 - [ ] Write unit tests for agent removal
 
+## Phase 7: FFI/Bridge Completeness Testing
+- [x] Implement FFI export verification tests
+	- Created `tests/ffi_completeness.rs` with 5 test cases
+	- Verifies all public Rust API functions are exported to C FFI
+	- Ensures all FFI exports appear in generated `libreconomy.h` header
+	- Validates that Rust public functions have corresponding FFI exports
+	- Confirms all FFI functions are used in Godot bridge (`libreconomy_bridge.cpp`)
+	- Detects undocumented/orphaned FFI exports
+- [x] Integrate FFI tests into release pipeline
+	- Added `cargo test --test ffi_completeness` to `scripts/release.sh`
+	- Tests run after build but before header generation and bridge compilation
+	- Release fails early if FFI layer is incomplete or out of sync
+- [x] Document FFI/Bridge testing rationale
+	- Tests prevent API drift between Rust, C FFI, and bridge layers
+	- Ensures new public functions aren't forgotten during export
+	- Catches orphaned or unused FFI functions
+	- Validates bridge exposes complete API to Godot/GDScript
+
 ---
 
 Each phase is self-contained and can be executed in a single session by an AI agent. All implementation must conform to coding standards in Reference/coding-contract.md.
