@@ -8,13 +8,35 @@
 - [x] Integrate agents with ECS world
 - [x] Add unit tests for agent logic
 
-- [ ] Market System
-	- [ ] Define market component data structures
-	- [ ] Implement buyer/seller matching logic
-	- [ ] Implement trade transaction logic
-	- [ ] Implement price discovery algorithm
-	- [ ] Integrate market system with ECS world
-	- [ ] Add unit tests for market logic
+- [ ] Market System (Phased Evolution)
+	- [ ] Stage 0: Direct bilateral trade (baseline)
+		- [ ] Basic MatchingSystem (neighbor scan + negotiation)
+		- [ ] Emit TransactionEvent for successful trades
+		- [ ] Unit tests for direct matching & negotiation trigger
+	- [ ] Stage 1: Intent Registry
+		- [ ] Define Offer component & OfferIndex (bounded ring buffers, expiry)
+		- [ ] Expiry + LRU pruning logic
+		- [ ] Matching prefers indexed offers before neighbor scanning
+		- [ ] Unit tests for offer posting/matching & pruning
+	- [ ] Stage 2: Venue Activation
+		- [ ] Venue component & activation metrics collection
+		- [ ] Threshold evaluation (search attempts, failed match rate)
+		- [ ] petgraph edges (agent ↔ venue) for network analysis
+		- [ ] Integration tests for dynamic venue enabling/disabling
+	- [ ] Stage 3: Order Book & Escrow
+		- [ ] Bounded OrderBook per item (capacity limits)
+		- [ ] Escrow/SettlementSystem for low-trust trades
+		- [ ] Price indicators (median/EMA) feeding PriceMemory
+		- [ ] Unit & integration tests (settlement atomicity, indicator correctness)
+	- [ ] Stage 4: Advanced Features
+		- [ ] Fees & latency modeling (optional)
+		- [ ] Specialized venue rules (min reputation, caps)
+		- [ ] Performance profiling (embedded constraints)
+		- [ ] Property tests for pruning & order invariants
+	- [ ] Gating & Config
+		- [ ] Implement MarketConfig flags (intents_enabled, venues_enabled, order_book_enabled, escrow_enabled)
+		- [ ] Dynamic enable/disable logic & metrics thresholds tests
+		- [ ] Documentation of phased activation & deactivation criteria
 
 - [ ] Labor System
 	- [ ] Define employment/gig work components

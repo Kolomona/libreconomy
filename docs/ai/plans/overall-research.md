@@ -1031,6 +1031,42 @@ Tasks:
 - TradeTransactionSystem for atomic trade execution
 - PriceDiscoverySystem for emergent pricing
 - Integration with Learning and Reputation systems
+ 
+#### Market Evolution & Optional Activation
+
+The market layer is intentionally emergent and modular. Prices remain decentralized at the agent level; the "market" only lowers search and settlement costs when organic trade density demands it.
+
+Phased progression (each phase feature-gated and metrics-triggered):
+1. Stage 0 – Direct bilateral search & negotiation (baseline): agents scan local neighbors (spatial or network) and negotiate directly. No shared structures.
+2. Stage 1 – Intent Registry: lightweight `OfferIndex` (bounded ring buffers per item) storing ephemeral bids/asks with expiry timestamps; simple matching scans index before neighbor search.
+3. Stage 2 – Venue Activation: introduce `Venue` component when thresholds exceeded (trade density, avg search attempts). Venue groups related offers; still no central price. Graph edges (agent ↔ venue) tracked for network analysis.
+4. Stage 3 – Order Book & Escrow: bounded per-item `OrderBook` plus optional `Escrow/SettlementSystem` for higher-risk trades (trust below threshold). Generates non-binding price indicators (median/EMA) feeding `PriceMemory`.
+5. Stage 4 – Advanced Features: fees, latency modeling, specialized venue rules (minimum reputation, capacity caps), analytics hooks.
+
+Activation Metrics (sample):
+- `avg_search_attempts_per_trade`
+- `failed_match_rate`
+- `distinct_traders_per_item`
+- `offer_churn_ratio` (posted vs fulfilled)
+- `reputation_dispute_frequency`
+
+Gating & Config:
+`MarketConfig { intents_enabled, venues_enabled, order_book_enabled, escrow_enabled }` toggled dynamically when metrics cross configurable thresholds; disable if overhead > benefit (e.g., on constrained devices).
+
+Performance Safeguards:
+- Fixed-size ring buffers & bounded vectors (no unbounded growth)
+- Time-based expiry + LRU pruning for stale offers
+- Reuse allocation pools; avoid heap allocs in hot loops
+- `f32` for metrics; integer ticks for timestamps
+- Feature flags (`#[cfg(feature = "market_venues")]`) to strip advanced layers for embedded targets
+
+Integration Notes:
+- Matching leverages `ReputationKnowledge` & `PriceMemory` to prioritize trustworthy, fair-priced offers.
+- Each successful trade emits `TransactionEvent` consumed by Reputation & Learning systems.
+- Offer/venue relationships modeled as petgraph subgraphs (optional) enabling queries (e.g., centrality of a venue).
+- No central price enforcement; `PriceDiscoverySystem` computes indicative stats only (median, EMA, volatility) that agents may optionally ingest.
+
+Roadmap Impact: Market System tasks should be restructured into phased evolution (Stages 0–4 + gating & metrics) rather than a monolithic implementation.
 
 **Labor System:**
 - EmploymentSystem for job matching
