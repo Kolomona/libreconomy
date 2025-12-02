@@ -1,12 +1,12 @@
 # libreconomy Development Roadmap
 
 # Agents System
-- [ ] Define agent entity structure
-- [ ] Implement core agent components (Needs, Inventory, Wallet, Skills, Knowledge, Employment, Preferences)
-- [ ] Implement agent creation logic
-- [ ] Implement agent lifecycle management (creation, removal)
-- [ ] Integrate agents with ECS world
-- [ ] Add unit tests for agent logic
+- [x] Define agent entity structure
+- [x] Implement core agent components (Needs, Inventory, Wallet, Skills, Knowledge, Employment, Preferences)
+- [x] Implement agent creation logic
+- [x] Implement agent lifecycle management (creation, removal)
+- [x] Integrate agents with ECS world
+- [x] Add unit tests for agent logic
 
 - [ ] Market System
 	- [ ] Define market component data structures

@@ -184,6 +184,19 @@ impl Component for Agent {
     type Storage = VecStorage<Self>;
 }
 
+/// Agent skills component.
+///
+/// Simple key-value skill levels per agent.
+///
+/// # Example
+/// ```rust
+/// use libreconomy::Skills;
+/// let mut s = Skills::default();
+/// s.skills.insert("trading".into(), 2);
+/// s.skills.insert("farming".into(), 5);
+/// assert_eq!(s.skills.get("trading"), Some(&2));
+/// assert_eq!(s.skills.get("farming"), Some(&5));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct Skills {
     pub skills: HashMap<String, u32>, // skill_id -> level
@@ -192,6 +205,18 @@ impl Component for Skills {
     type Storage = VecStorage<Self>;
 }
 
+/// Agent knowledge component.
+///
+/// Stores observed prices and known trade partners.
+///
+/// # Example
+/// ```rust
+/// use libreconomy::{Knowledge, LearningSystem};
+/// let mut k = Knowledge::default();
+/// LearningSystem::update(&mut k, "water", 3.5);
+/// LearningSystem::update(&mut k, "water", 4.0);
+/// assert_eq!(k.known_prices.get("water"), Some(&4.0));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct Knowledge {
     pub known_prices: std::collections::HashMap<String, f32>,
@@ -201,6 +226,21 @@ impl Component for Knowledge {
     type Storage = VecStorage<Self>;
 }
 
+/// Agent employment component.
+///
+/// Tracks job status, employer, and subordinates.
+///
+/// # Example
+/// ```rust
+/// use libreconomy::Employment;
+/// let mut e = Employment::default();
+/// e.job_status = Some("employed".into());
+/// e.employer = Some("Acme Inc".into());
+/// e.employees.push("WorkerA".into());
+/// assert_eq!(e.job_status.as_deref(), Some("employed"));
+/// assert_eq!(e.employer.as_deref(), Some("Acme Inc"));
+/// assert_eq!(e.employees.len(), 1);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct Employment {
     pub job_status: Option<String>,
@@ -211,6 +251,7 @@ impl Component for Employment {
     type Storage = VecStorage<Self>;
 }
 
+/// Utility function type for preferences.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum UtilityFunctionType {
     Linear,
@@ -218,6 +259,15 @@ pub enum UtilityFunctionType {
     Custom(String), // Placeholder for custom logic
 }
 
+/// Agent preferences component.
+///
+/// # Example
+/// ```rust
+/// use libreconomy::{Preferences, UtilityFunctionType};
+/// let p = Preferences { utility_function: UtilityFunctionType::Linear, risk_tolerance: 0.3 };
+/// assert!(matches!(p.utility_function, UtilityFunctionType::Linear));
+/// assert_eq!(p.risk_tolerance, 0.3);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Preferences {
     pub utility_function: UtilityFunctionType,

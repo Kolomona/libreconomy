@@ -1,5 +1,6 @@
 use libreconomy::{
 	Agent, AgentIdAllocator, Inventory, Needs, Skills, Wallet,
+	Knowledge, Employment, Preferences, UtilityFunctionType,
 	create_agent, create_agent_with_needs, create_agent_with_wallet, create_agent_custom,
 	MIN_NEEDS, MAX_NEEDS
 };
@@ -14,6 +15,9 @@ fn main() {
 	world.register::<Inventory>();
 	world.register::<Wallet>();
 	world.register::<Skills>();
+	world.register::<Knowledge>();
+	world.register::<Employment>();
+	world.register::<Preferences>();
 
 	// Insert the AgentId allocator resource
 	world.insert(AgentIdAllocator::new());
@@ -145,6 +149,40 @@ fn main() {
 		println!("  agent2 successfully removed from world.");
 	} else {
 		println!("  ERROR: agent2 still exists!");
+	}
+
+	println!("\n--- Optional Components Demo (Skills, Knowledge, Preferences) ---");
+	// Attach optional components to agent1 and read them back
+	{
+		let mut pref_store = world.write_storage::<Preferences>();
+		pref_store.insert(agent1, Preferences { utility_function: UtilityFunctionType::Linear, risk_tolerance: 0.4 }).ok();
+		let mut know_store = world.write_storage::<Knowledge>();
+		know_store.insert(agent1, Knowledge::default()).ok();
+	}
+	{
+		let mut skills_store = world.write_storage::<Skills>();
+		if let Some(s) = skills_store.get_mut(agent1) {
+			s.skills.insert("trading".into(), 2);
+			s.skills.insert("farming".into(), 1);
+		} else {
+			skills_store.insert(agent1, Skills::default()).ok();
+		}
+	}
+	{
+		let mut know_store = world.write_storage::<Knowledge>();
+		if let Some(k) = know_store.get_mut(agent1) {
+			libreconomy::LearningSystem::update(k, "water", 3.5);
+		}
+	}
+	{
+		let pref_store = world.read_storage::<Preferences>();
+		let skills_store = world.read_storage::<Skills>();
+		let know_store = world.read_storage::<Knowledge>();
+		let pref = pref_store.get(agent1).unwrap();
+		let skills = skills_store.get(agent1).unwrap();
+		let know = know_store.get(agent1).unwrap();
+		println!("Agent1 Optional: risk={:.2}, skills={:?}, known_prices={:?}",
+			pref.risk_tolerance, skills.skills, know.known_prices);
 	}
 
 	println!("\n--- Phase 6: Unit Testing Coverage ---");
