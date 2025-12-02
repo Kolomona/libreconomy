@@ -37,11 +37,25 @@
 	- [ ] Integrate decision system with ECS world
 	- [ ] Add unit tests for decision logic
 
-- [ ] Learning System
-	- [ ] Define knowledge component structure
-	- [ ] Implement agent price/trade knowledge update logic
-	- [ ] Integrate learning system with ECS world
-	- [ ] Add unit tests for learning logic
+- [ ] Learning System (Multi-Phase)
+	- [ ] Phase 1: First-hand reputation implementation
+		- [ ] Define ReputationKnowledge component with first_hand HashMap
+		- [ ] Implement ReputationView (alpha, beta, last_interaction_tick, count)
+		- [ ] Implement ReputationUpdateSystem consuming TransactionEvent
+		- [ ] TrustLevel baseline for unknown agents; optional time-based decay on read
+		- [ ] Unit and integration tests for reputation scoring, updates, decay
+	- [ ] Phase 2: Information sharing (rumor mill)
+		- [ ] Extend ReputationKnowledge with second_hand HashMap
+		- [ ] Implement SecondHandView structure (informant, view, received_tick, informant_trust)
+		- [ ] Implement InformationSharingSystem with truthfulness probability based on sharer reputation
+		- [ ] Aggregation weighted by informant trust and time decay; enforce Dunbar limit and pruning
+		- [ ] Unit and integration tests for information flow, aggregation, pruning
+	- [ ] Phase 3: Broader knowledge types
+		- [ ] Implement PriceMemory (RingBuffer of recent prices, avg_price, trend detection)
+		- [ ] Implement InventorySnapshot with confidence decay and bounded storage
+		- [ ] Implement DemandProfile for sellers (frequency, typical quantity/price, last_purchase_tick)
+		- [ ] Full LearningSystem updates after trades; time/interaction/capacity-based decay; memory bounds (Dunbar)
+		- [ ] Unit, integration, and property tests for decay/pruning and invariants
 
 - [ ] Negotiation System
 	- [ ] Implement bartering logic
@@ -77,7 +91,7 @@
 	- [ ] Add integration tests for FFI and simulation
 
 - [ ] Examples
-	- [ ] Add example for agent creation
+	- [x] Add example for agent creation
 	- [ ] Add example for market transactions
 	- [ ] Add example for labor and production
 	- [ ] Add example for simulation loop usage
