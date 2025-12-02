@@ -52,9 +52,9 @@ Implement the foundational agent entity and its core components (Needs, Inventor
 - [x] Test ECS queries for agents and components
 
 ## Phase 6: Unit Testing
-- [ ] Write unit tests for agent creation
-- [ ] Write unit tests for component assignment
-- [ ] Write unit tests for agent removal
+- [x] Write unit tests for agent creation
+- [x] Write unit tests for component assignment
+- [x] Write unit tests for agent removal
 
 ## Phase 7: FFI/Bridge Completeness Testing
 - [x] Implement FFI export verification tests

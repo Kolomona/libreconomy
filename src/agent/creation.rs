@@ -295,4 +295,80 @@ mod tests {
         let agent = agents.get(entity).unwrap();
         assert_eq!(agent.id, AgentId(1));
     }
+
+    #[test]
+    fn test_remove_agent() {
+        // Arrange
+        let mut world = World::new();
+        world.register::<Agent>();
+        world.register::<Needs>();
+        world.register::<Inventory>();
+        world.register::<Wallet>();
+        world.insert(AgentIdAllocator::new());
+
+        // Create an agent
+        let entity = create_agent(&mut world);
+        
+        // Verify entity and components exist
+        assert!(world.entities().is_alive(entity));
+        {
+            let agents = world.read_storage::<Agent>();
+            assert!(agents.get(entity).is_some());
+        }
+        
+        // Act - remove the agent
+        remove_agent(&mut world, entity);
+
+        // Assert - entity no longer alive
+        assert!(!world.entities().is_alive(entity));
+        
+        // Assert - all components removed
+        {
+            let agents = world.read_storage::<Agent>();
+            assert!(agents.get(entity).is_none());
+            
+            let needs = world.read_storage::<Needs>();
+            assert!(needs.get(entity).is_none());
+            
+            let inventory = world.read_storage::<Inventory>();
+            assert!(inventory.get(entity).is_none());
+            
+            let wallet = world.read_storage::<Wallet>();
+            assert!(wallet.get(entity).is_none());
+        }
+    }
+
+    #[test]
+    fn test_remove_agent_with_multiple_agents() {
+        // Arrange
+        let mut world = World::new();
+        world.register::<Agent>();
+        world.register::<Needs>();
+        world.register::<Inventory>();
+        world.register::<Wallet>();
+        world.insert(AgentIdAllocator::new());
+
+        // Create multiple agents
+        let entity1 = create_agent(&mut world);
+        let entity2 = create_agent(&mut world);
+        let entity3 = create_agent(&mut world);
+
+        // Act - remove middle agent
+        remove_agent(&mut world, entity2);
+
+        // Assert - entity2 removed, others remain
+        assert!(world.entities().is_alive(entity1));
+        assert!(!world.entities().is_alive(entity2));
+        assert!(world.entities().is_alive(entity3));
+
+        // Assert - entity1 and entity3 still have components
+        let agents = world.read_storage::<Agent>();
+        assert!(agents.get(entity1).is_some());
+        assert!(agents.get(entity2).is_none());
+        assert!(agents.get(entity3).is_some());
+
+        // Verify unique IDs remain for living agents
+        assert_eq!(agents.get(entity1).unwrap().id, AgentId(1));
+        assert_eq!(agents.get(entity3).unwrap().id, AgentId(3));
+    }
 }
