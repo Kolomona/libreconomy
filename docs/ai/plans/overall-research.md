@@ -117,6 +117,154 @@ Status: Agent System complete; remaining systems in research/design phase
 - risk_tolerance f32 range 0.0-1.0
 - Future: honesty f32 to modulate truthfulness in information sharing
 
+**ResourceSource Component:**
+- resource_type String (e.g., "water_well", "farm", "mine")
+- item_produced String (what item agents can extract)
+- regeneration_rate f32 (items per tick)
+- current_stock u32, max_stock u32
+- requires_skill Option<String> (skill needed to extract)
+- Library defines component; application places instances in world and handles spatial queries
+
+---
+
+## Library/Application Interface
+
+See [ARCHITECTURE.md](../ARCHITECTURE.md) for comprehensive integration guide.
+
+### Separation of Concerns
+
+**libreconomy (this library) provides:**
+- Economic logic and agent decision-making
+- Item type definitions and need satisfaction mechanics
+- Trading, production, and labor protocols
+- Knowledge, reputation, and learning systems
+- ResourceSource component definition
+
+**Calling applications provide:**
+- Spatial world management (positions, coordinates, grids)
+- Proximity/neighbor queries via WorldQuery trait
+- Pathfinding and movement execution
+- Rendering, UI, and visualization
+- Game loop timing and tick management
+- Placement of ResourceSource instances in the world
+
+### WorldQuery Trait (Application Interface)
+
+Applications implement this trait to provide world context to libreconomy:
+
+```rust
+pub trait WorldQuery {
+    /// Get agents within interaction range of the specified agent
+    /// Applications define "nearby" based on spatial model (2D grid, 3D space, graph, etc.)
+    /// max_count is a hint for performance optimization
+    fn get_nearby_agents(&self, agent: AgentId, max_count: usize) -> Vec<AgentId>;
+
+    /// Get resource sources within interaction range
+    /// resource_type examples: "water_well", "farm", "mine"
+    /// Returns Entity IDs with ResourceSource components
+    fn get_nearby_resources(&self, agent: AgentId, resource_type: &str) -> Vec<Entity>;
+
+    /// Check if two agents can currently interact
+    /// Considers distance, obstacles, line of sight, agent state, etc.
+    fn can_interact(&self, agent1: AgentId, agent2: AgentId) -> bool;
+}
+```
+
+Example implementation for 2D grid world:
+- Applications maintain HashMap<AgentId, (x, y)> positions
+- get_nearby_agents() returns agents within radius using distance calculation
+- get_nearby_resources() checks grid cells within range
+- can_interact() verifies distance <= interaction_range
+
+### Decision Output Types
+
+libreconomy returns three types of decisions for applications to execute:
+
+**Intent (High-level goals):**
+```rust
+pub enum Intent {
+    SeekItem { item_type: String, urgency: f32 },  // Find and acquire item
+    FindWork { skill_types: Vec<String> },         // Seek employment
+    SeekTrade { buying: bool, item_type: String }, // Find trade partners
+    Rest,                                           // Satisfied, do nothing
+}
+```
+- Application finds appropriate targets and pathfinds agents
+- Example: SeekItem("water") → app finds nearest water_well → pathfind agent to it
+
+**Action (Specific targets):**
+```rust
+pub struct Action {
+    pub target_agent: AgentId,
+    pub action_type: ActionType,
+}
+pub enum ActionType {
+    InitiateTrade { item: String, offer_price: f32 },
+    AcceptEmployment { wage: f32 },
+    AskForInformation { query_type: String },
+}
+```
+- Library has identified specific partner
+- Application moves agent into interaction range
+- Once in range, library executes the action
+
+**Transaction (Immediate execution):**
+```rust
+pub struct Transaction {
+    pub buyer: AgentId,
+    pub seller: AgentId,
+    pub item: String,
+    pub quantity: u32,
+    pub price: f32,
+    pub success: bool,
+}
+```
+- Agents already in contact, library handles everything
+- Application provides UI/audio feedback only
+
+### ItemRegistry System
+
+**Default items provided by library:**
+- "water" → satisfies thirst (-30.0)
+- "food" → satisfies hunger (-25.0)
+- "meal" → satisfies thirst (-10.0) and hunger (-40.0)
+- "wood", "stone", "ore" → crafting materials
+- "axe", "pickaxe" → tools with durability
+
+**ItemType structure:**
+```rust
+pub struct ItemType {
+    pub id: String,
+    pub name: String,
+    pub satisfies: HashMap<NeedType, f32>,  // Need reduction values
+    pub consumable: bool,
+    pub durability: Option<u32>,
+    pub stack_size: u32,
+}
+```
+
+**Application usage:**
+```rust
+// Start with defaults
+let mut registry = ItemRegistry::with_defaults();
+
+// Override defaults for game balance
+registry.register(ItemType {
+    id: "water".to_string(),
+    satisfies: [(NeedType::Thirst, -50.0)].into(),  // More effective
+    // ...
+});
+
+// Add custom items
+registry.register(ItemType {
+    id: "mana_potion".to_string(),
+    satisfies: [(NeedType::Custom("mana".to_string()), -100.0)].into(),
+    // ...
+});
+```
+
+---
+
 ### System Architecture
 
 **Implemented Systems:**
@@ -604,7 +752,20 @@ Learning and updates:
 ### Trait-Based Pluggable Design
 
 **DecisionMaker trait definition:**
-- Primary method: decide(&self, agent: &Agent, world: &World, options: &[Action]) -> Action
+```rust
+pub trait DecisionMaker {
+    fn decide(
+        &self,
+        agent: AgentId,
+        world: &World,
+        world_query: &dyn WorldQuery,
+    ) -> DecisionOutput;
+}
+```
+
+- Primary method receives agent, ECS world, and WorldQuery trait from application
+- WorldQuery provides spatial context (nearby agents, resources) without library knowing world structure
+- Returns DecisionOutput (Intent, Action, or Transaction) for application to execute
 - Allows swapping decision-making algorithms without changing simulation logic
 - Initial implementation: UtilityMaximizationDecisionMaker
 - Future implementations:
@@ -612,6 +773,28 @@ Learning and updates:
   - HeuristicDecisionMaker: fast approximate rules (satisficing)
   - PersonalityBasedDecisionMaker: different types (risk-averse, greedy, social, etc.)
   - BoundedRationalityDecisionMaker: imperfect optimization with cognitive limits
+
+**Example usage in decision-making:**
+```rust
+impl DecisionMaker for UtilityMaximizationDecisionMaker {
+    fn decide(&self, agent: AgentId, world: &World, world_query: &dyn WorldQuery) -> DecisionOutput {
+        // Library queries application for context
+        let nearby_agents = world_query.get_nearby_agents(agent, 10);
+        let nearby_water = world_query.get_nearby_resources(agent, "water_well");
+
+        // Library makes economic decision based on agent needs and available options
+        if agent_needs_water(world, agent) {
+            if let Some(well) = nearby_water.first() {
+                return DecisionOutput::Intent(Intent::SeekItem {
+                    item_type: "water".to_string(),
+                    urgency: 0.9,
+                });
+            }
+        }
+        // ... more decision logic
+    }
+}
+```
 
 **Action types available to agents:**
 - Trade: buy or sell specific item to/from specific partner at negotiated price
@@ -1037,8 +1220,8 @@ Tasks:
 The market layer is intentionally emergent and modular. Prices remain decentralized at the agent level; the "market" only lowers search and settlement costs when organic trade density demands it.
 
 Phased progression (each phase feature-gated and metrics-triggered):
-1. Stage 0 – Direct bilateral search & negotiation (baseline): agents scan local neighbors (spatial or network) and negotiate directly. No shared structures.
-2. Stage 1 – Intent Registry: lightweight `OfferIndex` (bounded ring buffers per item) storing ephemeral bids/asks with expiry timestamps; simple matching scans index before neighbor search.
+1. Stage 0 – Direct bilateral search & negotiation (baseline): agents query nearby agents via WorldQuery trait (application provides neighbor list based on spatial/graph model) and negotiate directly. No shared market structures.
+2. Stage 1 – Intent Registry: lightweight `OfferIndex` (bounded ring buffers per item) storing ephemeral bids/asks with expiry timestamps; simple matching scans index before querying WorldQuery for additional neighbors.
 3. Stage 2 – Venue Activation: introduce `Venue` component when thresholds exceeded (trade density, avg search attempts). Venue groups related offers; still no central price. Graph edges (agent ↔ venue) tracked for network analysis.
 4. Stage 3 – Order Book & Escrow: bounded per-item `OrderBook` plus optional `Escrow/SettlementSystem` for higher-risk trades (trust below threshold). Generates non-binding price indicators (median/EMA) feeding `PriceMemory`.
 5. Stage 4 – Advanced Features: fees, latency modeling, specialized venue rules (minimum reputation, capacity caps), analytics hooks.

@@ -78,6 +78,42 @@ An agent is represented by:
 - An `Agent` component (contains unique `AgentId`)
 - Core components: `Needs`, `Inventory`, `Wallet`
 
+## Integration Architecture
+
+### Library vs Application Responsibilities
+
+libreconomy is designed as a **pure economic simulation library**. Understanding what the library handles versus what your application handles is crucial for successful integration.
+
+**libreconomy provides:**
+- Economic decision logic
+- Agent behavior and utility calculations
+- Trading, production, and labor mechanisms
+- Item type definitions and need satisfaction
+- ECS components for economic state
+
+**Your application provides:**
+- Spatial world (positions, coordinates, grids)
+- Proximity queries ("who is nearby?")
+- Pathfinding and movement
+- Rendering and UI
+- Game loop timing
+
+### The WorldQuery Interface
+
+Your application implements the `WorldQuery` trait to provide spatial context:
+
+```rust
+pub trait WorldQuery {
+    fn get_nearby_agents(&self, agent: AgentId, max_count: usize) -> Vec<AgentId>;
+    fn get_nearby_resources(&self, agent: AgentId, resource_type: &str) -> Vec<Entity>;
+    fn can_interact(&self, agent1: AgentId, agent2: AgentId) -> bool;
+}
+```
+
+This allows libreconomy to make economic decisions without knowing your world structure.
+
+**For detailed integration patterns and examples, see [ARCHITECTURE.md](ARCHITECTURE.md).**
+
 ## Creating Agents
 
 ### Default Agent
@@ -321,6 +357,139 @@ if let Some(needs) = needs_storage.get(agent) {
     println!("Agent has no Needs component");
 }
 ```
+
+## Integration Patterns
+
+### Implementing WorldQuery
+
+Here's a minimal example of implementing WorldQuery for a 2D grid world:
+
+```rust
+struct GridWorld {
+    agent_positions: HashMap<AgentId, (i32, i32)>,
+    resources: HashMap<(i32, i32), Vec<(Entity, String)>>,
+    interaction_range: f32,
+}
+
+impl WorldQuery for GridWorld {
+    fn get_nearby_agents(&self, agent: AgentId, max_count: usize) -> Vec<AgentId> {
+        let Some(&pos) = self.agent_positions.get(&agent) else {
+            return Vec::new();
+        };
+
+        let mut nearby: Vec<(AgentId, f32)> = self.agent_positions
+            .iter()
+            .filter(|(&id, _)| id != agent)
+            .map(|(&id, &other_pos)| (id, distance(pos, other_pos)))
+            .filter(|(_, dist)| *dist <= self.interaction_range)
+            .collect();
+
+        nearby.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        nearby.truncate(max_count);
+        nearby.into_iter().map(|(id, _)| id).collect()
+    }
+
+    fn get_nearby_resources(&self, agent: AgentId, resource_type: &str) -> Vec<Entity> {
+        // Similar implementation checking positions within range
+        vec![]  // Simplified for example
+    }
+
+    fn can_interact(&self, agent1: AgentId, agent2: AgentId) -> bool {
+        let Some(&pos1) = self.agent_positions.get(&agent1) else { return false; };
+        let Some(&pos2) = self.agent_positions.get(&agent2) else { return false; };
+        distance(pos1, pos2) <= self.interaction_range
+    }
+}
+```
+
+### Registering Custom Items
+
+```rust
+use libreconomy::{ItemRegistry, ItemType, NeedType};
+
+// Start with defaults
+let mut registry = ItemRegistry::with_defaults();
+
+// Override default water to be more effective
+registry.register(ItemType {
+    id: "water".to_string(),
+    name: "Purified Water".to_string(),
+    satisfies: [(NeedType::Thirst, -50.0)].into(),
+    consumable: true,
+    durability: None,
+    stack_size: 5,
+});
+
+// Add custom fantasy item
+registry.register(ItemType {
+    id: "mana_potion".to_string(),
+    name: "Mana Potion".to_string(),
+    satisfies: [(NeedType::Custom("mana".to_string()), -100.0)].into(),
+    consumable: true,
+    durability: None,
+    stack_size: 3,
+});
+```
+
+### Handling Decision Outputs
+
+```rust
+// Get decision from libreconomy
+let decision = decision_maker.decide(agent_id, &world, &grid_world);
+
+match decision {
+    DecisionOutput::Intent(Intent::SeekItem { item_type, urgency }) => {
+        // App finds nearest resource and pathfinds agent to it
+        let sources = grid_world.get_nearby_resources(agent_id, &item_type);
+        if let Some(source) = sources.first() {
+            pathfinding_system.navigate_to(agent_entity, *source);
+        }
+    }
+
+    DecisionOutput::Action(Action { target_agent, action_type }) => {
+        // App moves agent into interaction range
+        if grid_world.can_interact(agent_id, target_agent) {
+            libreconomy::execute_action(&mut world, agent_id, target_agent, action_type);
+        } else {
+            pathfinding_system.navigate_to_agent(agent_entity, target_agent);
+        }
+    }
+
+    DecisionOutput::Transaction(txn) => {
+        // Library already handled it, just show feedback
+        if txn.success {
+            ui_system.show_notification(&format!("Trade completed!"));
+        }
+    }
+}
+```
+
+### Simple Game Loop Integration
+
+```rust
+fn game_loop(world: &mut World, grid_world: &mut GridWorld) {
+    loop {
+        // 1. Update libreconomy systems
+        run_need_decay_system(world);
+
+        // 2. Get decisions from agents
+        let decisions = get_all_agent_decisions(world, grid_world);
+
+        // 3. Execute decisions in your world
+        for (agent, decision) in decisions {
+            execute_decision(world, grid_world, agent, decision);
+        }
+
+        // 4. Update your game systems (movement, rendering, etc.)
+        update_game_systems(grid_world);
+
+        // 5. Render
+        render_frame(world, grid_world);
+    }
+}
+```
+
+**For complete integration examples, see [ARCHITECTURE.md](ARCHITECTURE.md) and `examples/simple_integration.rs`.**
 
 ## Next Steps
 

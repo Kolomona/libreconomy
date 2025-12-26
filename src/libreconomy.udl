@@ -1,6 +1,57 @@
-namespace arithmetic {
-	interface Calculator {
-		constructor();
-		i64 add(i64 a, i64 b);
-	}
-}
+namespace libreconomy {
+    // Get library version
+    string libreconomy_version();
+
+    // Get total agent count (placeholder - will be removed when World interface is added)
+    u32 get_agent_count();
+};
+
+// Agent needs component
+dictionary Needs {
+    f32 thirst;
+    f32 hunger;
+    f32 tiredness;
+};
+
+// Agent inventory component
+dictionary Inventory {
+    // Maps item_id to quantity
+    // In Python: {'water': 5, 'food': 3}
+    // Note: uniffi doesn't support HashMap in dictionaries directly
+    // This will be handled through methods
+};
+
+// Agent wallet component
+dictionary Wallet {
+    f32 currency;
+};
+
+// WorldHandle interface for Python/Kotlin/Swift
+// This wraps the C FFI but provides a cleaner OOP interface
+[Traits=(Debug)]
+interface World {
+    // Create a new world
+    constructor();
+
+    // Agent management
+    u64 create_agent();
+    u64 create_agent_with_needs(f32 thirst, f32 hunger, f32 tiredness);
+    u64 create_agent_with_wallet(f32 currency);
+    u64 create_agent_full(f32 thirst, f32 hunger, f32 tiredness, f32 currency);
+    boolean remove_agent(u64 entity_id);
+    u64 get_agent_count();
+
+    // Needs component access
+    Needs? get_needs(u64 entity_id);
+    boolean set_needs(u64 entity_id, f32 thirst, f32 hunger, f32 tiredness);
+
+    // Inventory component access
+    u32 get_inventory_item(u64 entity_id, string item_id);
+    boolean add_inventory_item(u64 entity_id, string item_id, u32 quantity);
+    u32 remove_inventory_item(u64 entity_id, string item_id, u32 quantity);
+
+    // Wallet component access
+    Wallet? get_wallet(u64 entity_id);
+    boolean deposit_wallet(u64 entity_id, f32 amount);
+    f32 withdraw_wallet(u64 entity_id, f32 amount);
+};

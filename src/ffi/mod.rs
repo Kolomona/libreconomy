@@ -1,12 +1,24 @@
 //! C FFI layer for cross-language integration
-//! 
+//!
 //! This module provides C-compatible exports for the libreconomy API.
 //! Functions use opaque pointers to wrap the ECS World.
+
+pub mod components;
+
+#[cfg(feature = "uniffi")]
+pub mod uniffi_impl;
 
 use specs::prelude::*;
 use crate::agent::components::{Agent, Needs, Inventory, Wallet};
 use crate::agent::identity::AgentIdAllocator;
 use crate::agent::creation;
+
+// Re-export component FFI functions
+pub use components::*;
+
+// Re-export uniffi types when feature is enabled
+#[cfg(feature = "uniffi")]
+pub use uniffi_impl::{World as UniffiWorld, Needs as UniffiNeeds, Wallet as UniffiWallet};
 
 /// Opaque handle to an ECS World for C FFI
 #[repr(C)]
@@ -63,7 +75,7 @@ pub unsafe extern "C" fn create_agent_with_needs(
         return 0;
     }
     let world_ref = &mut *(world as *mut World);
-    let needs = Needs::new(thirst as f32, hunger as f32);
+    let needs = Needs::new(thirst as f32, hunger as f32, 50.0); // default tiredness
     let entity = creation::create_agent_with_needs(world_ref, needs);
     entity.id() as u64
 }
@@ -97,7 +109,7 @@ pub unsafe extern "C" fn create_agent_full(
         return 0;
     }
     let world_ref = &mut *(world as *mut World);
-    let needs = Needs::new(thirst as f32, hunger as f32);
+    let needs = Needs::new(thirst as f32, hunger as f32, 50.0); // default tiredness
     let inventory = Inventory::default();
     let wallet = Wallet::new(currency as f32);
     let entity = creation::create_agent_custom(world_ref, needs, inventory, wallet);

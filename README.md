@@ -11,6 +11,24 @@ A cross-platform, agent-based economy simulator library for games and applicatio
 - Subjective value modeling (planned)
 - Market, labor, and production systems (planned)
 
+## Architecture
+
+libreconomy is a **pure economic simulation library** - it handles economic logic, agent decision-making, and trading protocols, but **not** spatial/physical simulation.
+
+**Your application provides:**
+- Spatial world management (positions, coordinates)
+- Proximity queries via the `WorldQuery` trait
+- Pathfinding and movement execution
+- Rendering and game loop
+
+**libreconomy provides:**
+- Economic decisions based on agent needs
+- Trading, production, and labor mechanisms
+- Price discovery and knowledge systems
+- Item definitions and need satisfaction
+
+**See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete integration guide, patterns, and examples.**
+
 ## Build Instructions
 ```sh
 cargo build --release
@@ -94,6 +112,10 @@ cargo run --example basic_simulation
 ```
 
 This demonstrates agent creation, component manipulation, and ECS queries.
+
+For integration patterns, see:
+- `examples/simple_integration.rs` - Complete example showing WorldQuery implementation and game loop integration
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Detailed integration guide with code examples
 
 ## Status
 

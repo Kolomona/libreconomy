@@ -8,6 +8,7 @@ use super::identity::AgentIdAllocator;
 /// Default starting needs for a new agent (mid-range)
 const DEFAULT_THIRST: f32 = 50.0;
 const DEFAULT_HUNGER: f32 = 50.0;
+const DEFAULT_TIREDNESS: f32 = 50.0;
 
 /// Default starting currency for a new agent
 const DEFAULT_CURRENCY: f32 = 100.0;
@@ -40,10 +41,10 @@ const DEFAULT_CURRENCY: f32 = 100.0;
 /// Panics if AgentIdAllocator resource is not registered in the world
 /// Panics if required component types are not registered
 pub fn create_agent(world: &mut World) -> Entity {
-    let needs = Needs::new(DEFAULT_THIRST, DEFAULT_HUNGER);
+    let needs = Needs::new(DEFAULT_THIRST, DEFAULT_HUNGER, DEFAULT_TIREDNESS);
     let inventory = Inventory::default();
     let wallet = Wallet::new(DEFAULT_CURRENCY);
-    
+
     create_agent_custom(world, needs, inventory, wallet)
 }
 
@@ -73,9 +74,9 @@ pub fn create_agent_with_needs(world: &mut World, needs: Needs) -> Entity {
 /// Panics if AgentIdAllocator resource is not registered in the world
 /// Panics if required component types are not registered
 pub fn create_agent_with_wallet(world: &mut World, wallet: Wallet) -> Entity {
-    let needs = Needs::new(DEFAULT_THIRST, DEFAULT_HUNGER);
+    let needs = Needs::new(DEFAULT_THIRST, DEFAULT_HUNGER, DEFAULT_TIREDNESS);
     let inventory = Inventory::default();
-    
+
     create_agent_custom(world, needs, inventory, wallet)
 }
 
@@ -216,7 +217,7 @@ mod tests {
         world.register::<Wallet>();
         world.insert(AgentIdAllocator::new());
 
-        let custom_needs = Needs::new(75.0, 25.0);
+        let custom_needs = Needs::new(75.0, 25.0, 35.0);
 
         // Act
         let entity = create_agent_with_needs(&mut world, custom_needs);
@@ -259,7 +260,7 @@ mod tests {
         world.register::<Wallet>();
         world.insert(AgentIdAllocator::new());
 
-        let custom_needs = Needs::new(80.0, 30.0);
+        let custom_needs = Needs::new(80.0, 30.0, 60.0);
         let custom_wallet = Wallet::new(250.0);
         let mut custom_inventory = Inventory::default();
         custom_inventory.add("water", 5);

@@ -66,6 +66,43 @@ default = []  # Minimal build for embedded
 parallel = ["rayon"]  # Enable for multi-core systems
 ```
 
+## Library Architecture
+
+### Separation of Concerns
+
+libreconomy is designed as a **pure economic simulation library** that integrates into applications. This architectural boundary ensures flexibility and reusability across different game engines and simulation platforms.
+
+**libreconomy provides:**
+- Economic logic and agent decision-making
+- Item type definitions and need satisfaction mechanics
+- Trading, production, and labor protocols
+- Knowledge, reputation, and learning systems
+- ECS components for economic state (Needs, Inventory, Wallet, Skills, etc.)
+
+**Your application provides:**
+- Spatial world management (coordinates, positions, grids, 3D space)
+- Proximity/neighbor queries ("which agents are nearby?")
+- Pathfinding and movement execution
+- Rendering, UI, and visualization
+- Game loop timing and tick management
+- Resource placement in the world
+
+### Query Trait Pattern
+
+Applications implement the `WorldQuery` trait to provide world context to libreconomy:
+
+```rust
+pub trait WorldQuery {
+    fn get_nearby_agents(&self, agent: AgentId, max_count: usize) -> Vec<AgentId>;
+    fn get_nearby_resources(&self, agent: AgentId, resource_type: &str) -> Vec<Entity>;
+    fn can_interact(&self, agent1: AgentId, agent2: AgentId) -> bool;
+}
+```
+
+This allows libreconomy to make economic decisions without knowing the details of your world representation (2D grid, 3D space, graph network, etc.). The library queries for spatial context, makes economic decisions, and returns outputs for your application to execute.
+
+**See [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) for complete integration guide with examples.**
+
 ## Economic Model Design
 
 ### Agent-Based System
@@ -152,3 +189,29 @@ Systems:
 Core simulation logic (Rust + specs + petgraph) → C API layer (via cbindgen) → High-level bindings (via uniffi) → Consumer applications
 
 This provides a performant, emergent economy driven by agent behavior that's both realistic and computationally efficient for embedded/game use cases, with convenient bindings for scripting/mobile applications.
+
+### Integration Patterns
+
+**1. WorldQuery Implementation**
+- Applications implement the WorldQuery trait to provide spatial context
+- Library queries for nearby agents and resources without knowing world structure
+- Supports any spatial model: 2D/3D grids, graphs, continuous spaces
+
+**2. Decision Execution**
+- Library returns three types of decisions:
+  - **Intent**: High-level goals ("seek water") - app finds targets and pathfinds
+  - **Action**: Specific targets ("trade with agent #42") - app moves agents into range
+  - **Transaction**: Immediate execution - library handles, app provides UI feedback
+
+**3. Item Customization**
+- Library provides default items (water, food, tools) for 80% use cases
+- Applications can override defaults or register custom items
+- ItemRegistry system supports need satisfaction mapping
+
+**4. Shared ECS World**
+- Both library and application use the same specs World
+- Library components: Needs, Inventory, Wallet, Skills, Knowledge
+- App components: Position, Velocity, Sprite, Health (game-specific)
+- Shared entities: Agents exist in both economic and spatial systems
+
+**See [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) for detailed integration examples and best practices.**

@@ -1,5 +1,31 @@
 # libreconomy Development Roadmap
 
+**See [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) for library/application separation of concerns and integration patterns.**
+
+---
+
+# Core Interfaces
+
+These define the boundary between libreconomy (economic logic) and calling applications (spatial/game logic):
+
+- [ ] Define WorldQuery trait for spatial queries
+  - [ ] get_nearby_agents() method
+  - [ ] get_nearby_resources() method
+  - [ ] can_interact() method
+- [ ] Define ItemRegistry system
+  - [ ] ItemType structure with need satisfaction mapping
+  - [ ] Default items (water, food, tools)
+  - [ ] Registration API for custom items
+- [ ] Define Decision output types
+  - [ ] Intent enum (high-level goals)
+  - [ ] Action struct (specific targets)
+  - [ ] Transaction struct (immediate execution)
+  - [ ] DecisionOutput wrapper enum
+- [ ] Define ResourceSource component
+- [ ] Document integration patterns and examples
+
+---
+
 # Agents System
 - [x] Define agent entity structure
 - [x] Implement core agent components (Needs, Inventory, Wallet, Skills, Knowledge, Employment, Preferences)
@@ -10,13 +36,13 @@
 
 - [ ] Market System (Phased Evolution)
 	- [ ] Stage 0: Direct bilateral trade (baseline)
-		- [ ] Basic MatchingSystem (neighbor scan + negotiation)
+		- [ ] Basic MatchingSystem (query nearby agents via WorldQuery trait + negotiation)
 		- [ ] Emit TransactionEvent for successful trades
 		- [ ] Unit tests for direct matching & negotiation trigger
 	- [ ] Stage 1: Intent Registry
 		- [ ] Define Offer component & OfferIndex (bounded ring buffers, expiry)
 		- [ ] Expiry + LRU pruning logic
-		- [ ] Matching prefers indexed offers before neighbor scanning
+		- [ ] Matching prefers indexed offers before querying WorldQuery
 		- [ ] Unit tests for offer posting/matching & pruning
 	- [ ] Stage 2: Venue Activation
 		- [ ] Venue component & activation metrics collection

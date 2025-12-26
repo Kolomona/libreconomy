@@ -33,9 +33,11 @@
 //! # Core Concepts
 //!
 //! - **Agents**: Autonomous entities with unique IDs
-//! - **Components**: Data attached to agents (Needs, Inventory, Wallet)
+//! - **Components**: Data attached to agents (Needs, Inventory, Wallet, Skills, Knowledge, Reputation)
 //! - **ECS World**: Container for all entities and components
-//! - **Systems**: Logic that operates on components (coming soon)
+//! - **Systems**: Logic that operates on components (ReputationUpdateSystem, ReputationDecaySystem)
+//! - **Events**: Transaction events that trigger reputation updates
+//! - **Decision Making**: Utility-based AI with species-aware behavior
 //!
 //! # FFI Support
 //!
@@ -46,18 +48,37 @@
 //! For detailed FFI documentation, see `docs/api/FFI.md`
 
 pub mod agent;
+pub mod decision;
+pub mod events;
 pub mod ffi;
+pub mod items;
+pub mod systems;
+pub mod world_query;
+
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 pub use agent::components::*;
 pub use agent::identity::{AgentId, AgentIdAllocator, AgentIdError};
 pub use agent::creation::{create_agent, create_agent_with_needs, create_agent_with_wallet, create_agent_custom, remove_agent};
+pub use decision::{Intent, Action, ActionType, Transaction, DecisionOutput, DecisionMaker, UtilityMaximizer, DecisionThresholds, UtilityWeights};
+pub use events::{Outcome, TransactionEvent, TransactionLog};
+pub use items::{ItemRegistry, ItemType, NeedType};
+pub use systems::{ReputationUpdateSystem, ReputationDecaySystem, ReputationDecayConfig, CurrentTick};
+pub use world_query::{WorldQuery, ResourceLocation};
 
 // C FFI exports
-pub use ffi::{WorldHandle, create_world, destroy_world, create_agent_default, 
-              create_agent_with_needs as ffi_create_agent_with_needs,
-              create_agent_with_wallet as ffi_create_agent_with_wallet,
-              create_agent_full, remove_agent as ffi_remove_agent, 
-              get_agent_count as ffi_get_agent_count};
+pub use ffi::{
+    WorldHandle, create_world, destroy_world, create_agent_default,
+    create_agent_with_needs as ffi_create_agent_with_needs,
+    create_agent_with_wallet as ffi_create_agent_with_wallet,
+    create_agent_full, remove_agent as ffi_remove_agent,
+    get_agent_count as ffi_get_agent_count,
+    // Component access
+    get_needs, set_needs,
+    get_inventory_item, add_inventory_item, remove_inventory_item,
+    get_wallet, deposit_wallet, withdraw_wallet,
+};
 
 #[export_name = "libreconomy_version"]
 pub extern "C" fn libreconomy_version_c() -> *const u8 {
@@ -65,16 +86,6 @@ pub extern "C" fn libreconomy_version_c() -> *const u8 {
 }
 // TODO: Add core simulation systems and API
 
-// Uniffi bindings are generated from proc-macro metadata via the CLI in release.
-// Declare a component to collect exported items under a namespace for metadata.
+// uniffi scaffolding (must be at crate root)
+#[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
-
-#[uniffi::export]
-pub fn libreconomy_version() -> String {
-    "0.0.1".to_string()
-}
-
-#[uniffi::export]
-pub fn get_agent_count() -> u32 {
-    0
-}

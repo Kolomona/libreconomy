@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>libreterra - libreconomy Test Application</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            background-color: #1a1a1a;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui-overlay {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #000000;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 24px;
+            pointer-events: none;
+            z-index: 1000;
+            border: 2px solid #333;
+        }
+
+        #entity-info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #000000;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 22px;
+            pointer-events: none;
+            z-index: 1000;
+            border: 2px solid #333;
+            display: none;
+            max-width: 350px;
+        }
+
+        #entity-info.visible {
+            display: block;
+        }
+
+        #controls {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #000000;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 22px;
+            z-index: 1000;
+            border: 2px solid #333;
+        }
+
+        .stat-line {
+            margin: 4px 0;
+        }
+
+        .control-line {
+            margin: 4px 0;
+        }
+
+        .info-header {
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 26px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 4px;
+        }
+
+        .need-bar {
+            margin: 6px 0;
+        }
+
+        .need-label {
+            display: inline-block;
+            width: 120px;
+        }
+
+        .need-value {
+            display: inline-block;
+            width: 60px;
+            text-align: right;
+        }
+
+        .need-bar-bg {
+            display: inline-block;
+            width: 100px;
+            height: 16px;
+            background: #ddd;
+            border: 1px solid #333;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        .need-bar-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .need-critical { background: #ff4444; }
+        .need-high { background: #ff8844; }
+        .need-moderate { background: #ffcc44; }
+        .need-low { background: #44ff44; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="ui-overlay">
+        <div class="stat-line">FPS: <span id="fps">0</span></div>
+        <div class="stat-line">Entities: <span id="entity-count">0</span></div>
+        <div class="stat-line">Camera: (<span id="cam-x">0</span>, <span id="cam-y">0</span>) @ <span id="cam-zoom">1.0</span>x</div>
+    </div>
+
+    <div id="entity-info">
+        <div class="info-header">Entity Info</div>
+        <div id="entity-info-content"></div>
+    </div>
+
+    <div id="controls">
+        <div class="control-line"><strong>Controls:</strong></div>
+        <div class="control-line">• Click: Select entity</div>
+        <div class="control-line">• Drag: Pan camera</div>
+        <div class="control-line">• Scroll: Zoom in/out</div>
+        <div class="control-line">• Double-click: Center view</div>
+        <div class="control-line">• Space: Pause/Resume</div>
+        <div class="control-line">• +/-: Speed up/slow down</div>
+        <div class="control-line">• S: Spawn 10 entities</div>
+        <div class="control-line">• K: Kill 10 entities</div>
+        <div class="control-line">• R: Reset camera</div>
+        <div class="control-line">• H: Toggle help</div>
+    </div>
+
+    <!-- Load p5.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+
+    <!-- Load bitECS as ES module and make globally available -->
+    <script type="module">
+        import * as bitECS from 'https://cdn.jsdelivr.net/npm/bitecs@0.3.38/+esm';
+        window.bitecs = bitECS;
+
+        // Signal that bitECS is loaded
+        window.bitecsLoaded = true;
+        window.dispatchEvent(new Event('bitecs-loaded'));
+    </script>
+
+    <!-- Load application files (wait for bitECS) -->
+    <script>
+        // Wait for bitECS to load before loading the rest
+        window.addEventListener('bitecs-loaded', () => {
+            const scripts = [
+                'src/config.js',
+                'src/terrain/grid.js',
+                'src/terrain/generator.js',
+                'src/ecs/components.js',
+                'src/ecs/world.js',
+                'src/ecs/systems/camera.js',
+                'src/ecs/systems/terrain.js',
+                'src/ecs/systems/needs.js',
+                'src/ecs/systems/decision.js',
+                'src/ecs/systems/movement.js',
+                'src/ecs/systems/consumption.js',
+                'src/ecs/systems/render.js',
+                'src/libreconomy-stub.js',
+                'src/world-query.js',
+                'sketch.js'
+            ];
+
+            // Load scripts sequentially
+            function loadScript(index) {
+                if (index >= scripts.length) return;
+
+                const script = document.createElement('script');
+                script.src = scripts[index];
+                script.onload = () => loadScript(index + 1);
+                script.onerror = () => {
+                    console.error('Failed to load:', scripts[index]);
+                    loadScript(index + 1);
+                };
+                document.body.appendChild(script);
+            }
+
+            loadScript(0);
+        });
+    </script>
+</body>
+</html>
