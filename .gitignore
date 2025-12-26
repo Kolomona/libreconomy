@@ -8,6 +8,7 @@ Cargo.lock
 # Build artifacts
 *.pyc
 *.class
+pkg/
 
 # Release packaging
 /dist/
