@@ -7,7 +7,7 @@ use specs::prelude::*;
 use serde_wasm_bindgen;
 
 use crate::{
-    Agent, Needs, Inventory, Wallet, ResourceSource,
+    Agent, Needs, Inventory, Wallet, ResourceSource, SpeciesComponent, Species,
     AgentIdAllocator, create_agent, create_agent_with_needs,
     create_agent_with_wallet, create_agent_custom, remove_agent,
     ItemRegistry, NeedType,
@@ -46,6 +46,7 @@ impl WasmWorld {
         world.register::<Inventory>();
         world.register::<Wallet>();
         world.register::<ResourceSource>();
+        world.register::<SpeciesComponent>();
 
         // Insert AgentId allocator resource
         world.insert(AgentIdAllocator::new());
@@ -305,6 +306,88 @@ impl WasmWorld {
             .get(item_id)
             .map(|item| item.satisfaction_for(need))
             .unwrap_or(0.0)
+    }
+
+    /// Create a rabbit agent
+    /// Returns the entity ID as u32
+    pub fn create_rabbit(&mut self) -> u32 {
+        let needs = Needs::new(50.0, 50.0, 50.0);
+        let inventory = Inventory::default();
+        let wallet = Wallet::new(0.0);
+        let species = SpeciesComponent::rabbit();
+
+        let entity = create_agent_custom(&mut self.world, needs, inventory, wallet);
+
+        // Add species component
+        let mut species_storage = self.world.write_storage::<SpeciesComponent>();
+        species_storage.insert(entity, species).ok();
+
+        entity.id() as u32
+    }
+
+    /// Create a human agent
+    /// Returns the entity ID as u32
+    pub fn create_human(&mut self) -> u32 {
+        let needs = Needs::new(50.0, 50.0, 50.0);
+        let inventory = Inventory::default();
+        let wallet = Wallet::new(0.0);
+        let species = SpeciesComponent::human();
+
+        let entity = create_agent_custom(&mut self.world, needs, inventory, wallet);
+
+        // Add species component
+        let mut species_storage = self.world.write_storage::<SpeciesComponent>();
+        species_storage.insert(entity, species).ok();
+
+        entity.id() as u32
+    }
+
+    /// Get agent species type as string
+    /// Returns "Human", "Rabbit", "Custom", or null if no species component
+    pub fn get_species(&self, entity_id: u32) -> JsValue {
+        let entity = self.world.entities().entity(entity_id);
+        let species_storage = self.world.read_storage::<SpeciesComponent>();
+
+        match species_storage.get(entity) {
+            Some(species_comp) => {
+                let species_str = match species_comp.species {
+                    Species::Human => "Human",
+                    Species::Rabbit => "Rabbit",
+                    Species::Custom(_) => "Custom",
+                };
+                JsValue::from_str(species_str)
+            }
+            None => JsValue::NULL,
+        }
+    }
+
+    /// Check if agent can eat a specific plant item
+    pub fn can_eat_plant(&self, entity_id: u32, plant_id: &str) -> bool {
+        let entity = self.world.entities().entity(entity_id);
+        let species_storage = self.world.read_storage::<SpeciesComponent>();
+
+        match species_storage.get(entity) {
+            Some(species_comp) => species_comp.diet.can_eat_plant(plant_id),
+            None => false,
+        }
+    }
+
+    /// Check if agent can hunt a specific species
+    /// species_name: "Human", "Rabbit", etc.
+    pub fn can_hunt(&self, entity_id: u32, prey_name: &str) -> bool {
+        let entity = self.world.entities().entity(entity_id);
+        let species_storage = self.world.read_storage::<SpeciesComponent>();
+
+        let prey_species = match prey_name {
+            "Human" => Species::Human,
+            "Rabbit" => Species::Rabbit,
+            _ => return false,
+        };
+
+        match species_storage.get(entity) {
+            Some(species_comp) => species_comp.diet.can_hunt(prey_species),
+            None => false,
+        }
     }
 }
 

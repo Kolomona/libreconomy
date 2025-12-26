@@ -1,4 +1,14 @@
 // Main p5.js sketch for libreterra
+console.log('✓ sketch.js loading...');
+
+// Check if p5.js is loaded
+if (typeof p5 === 'undefined') {
+  console.error('FATAL: p5.js is not loaded! Check CDN connection.');
+} else {
+  console.log('✓ p5.js is available');
+  console.log('✓ createCanvas available:', typeof createCanvas !== 'undefined');
+  console.log('✓ setup will be called by p5.js when ready');
+}
 
 // Global state
 let camera;
@@ -23,12 +33,16 @@ let selectedEntity = null;
 
 // p5.js setup function
 function setup() {
-  // Create canvas
-  const canvas = createCanvas(windowWidth, windowHeight);
-  canvas.parent('canvas-container');
+  try {
+    window.setupCalled = true;
+    console.log('✓ setup() called');
 
-  // Initialize camera
-  camera = new CameraSystem();
+    // Create canvas
+    const canvas = createCanvas(windowWidth, windowHeight);
+    canvas.parent('canvas-container');
+
+    // Initialize camera
+    camera = new CameraSystem();
 
   // Initialize terrain
   console.log('Initializing terrain...');
@@ -45,7 +59,8 @@ function setup() {
   ecsWorld = createECSWorld();
 
   // Spawn initial entities
-  spawnInitialEntities(ecsWorld, terrainGrid);
+  const spawnedEntities = spawnInitialEntities(ecsWorld, terrainGrid);
+  console.log(`Total entities in world: ${allEntitiesQuery(ecsWorld).length}`);
 
   // Initialize spatial hash and world query (Phase 4)
   spatialHash = new SpatialHash(100); // 100x100 pixel cells
@@ -53,7 +68,9 @@ function setup() {
   worldQuery = new WorldQuery(ecsWorld, terrainGrid, spatialHash);
 
   // Initialize decision-making systems (Phase 5)
-  libreconomyStub = new LibreconomyStub();
+  libreconomyStub = new LibreconomyWasmBridge();
+  libreconomyStub.initialize(WasmWorld, WasmDecisionMaker);
+  console.log('✓ WASM bridge initialized');
   needsDecaySystem = new NeedsDecaySystem();
   decisionSystem = new DecisionSystem(libreconomyStub, worldQuery);
 
@@ -67,8 +84,18 @@ function setup() {
   // Set frame rate
   frameRate(CONFIG.SIMULATION.TARGET_FPS);
 
-  console.log('libreterra initialized successfully!');
-  console.log(`World size: ${CONFIG.WORLD_WIDTH}x${CONFIG.WORLD_HEIGHT}`);
+    console.log('libreterra initialized successfully!');
+    console.log(`World size: ${CONFIG.WORLD_WIDTH}x${CONFIG.WORLD_HEIGHT}`);
+    console.log(`Camera: (${Math.round(camera.x)}, ${Math.round(camera.y)}) @ ${camera.zoom}x`);
+    console.log(`Press SPACE to center on a random entity`);
+
+    // Start stats logging after initialization
+    setInterval(logStats, 5000);
+  } catch (error) {
+    console.error('FATAL ERROR in setup():', error);
+    console.error('Stack trace:', error.stack);
+    throw error;
+  }
 }
 
 // p5.js draw function (main game loop)
@@ -84,6 +111,9 @@ function draw() {
 
   // Update spatial hash (Phase 4)
   spatialHash.update(ecsWorld);
+
+  // Update camera following (before apply)
+  camera.update(ecsWorld);
 
   // Apply camera transform
   camera.apply();
@@ -134,6 +164,7 @@ function updateEntityInfoUI() {
   const entities = allEntitiesQuery(ecsWorld);
   if (!entities.includes(selectedEntity)) {
     selectedEntity = null;
+    camera.stopFollowing();  // Stop following dead entity
     infoPanel.classList.remove('visible');
     return;
   }
@@ -257,11 +288,19 @@ function mousePressed() {
   if (clickedEntity !== null) {
     // Select entity
     selectedEntity = clickedEntity;
+
+    // Start camera following
+    camera.startFollowing(clickedEntity);
+
     console.log(`Selected entity ${clickedEntity}`);
   } else {
     // Deselect if clicking empty space
     if (selectedEntity !== null) {
       selectedEntity = null;
+
+      // Stop camera following
+      camera.stopFollowing();
+
       console.log('Entity deselected');
     }
 
@@ -296,10 +335,36 @@ function doubleClicked() {
 
 // p5.js key pressed handler
 function keyPressed() {
-  // Space: Pause/Resume
+  // Space: Center and zoom on random entity
   if (key === ' ') {
+    const entities = allEntitiesQuery(ecsWorld);
+    if (entities.length > 0) {
+      const randomEntity = entities[Math.floor(Math.random() * entities.length)];
+      const x = Position.x[randomEntity];
+      const y = Position.y[randomEntity];
+      camera.centerOn(x, y);
+      camera.zoom = 2.0; // Zoom in to see the entity
+      selectedEntity = randomEntity;
+
+      // Start camera following
+      camera.startFollowing(randomEntity);
+
+      console.log(`Centered on entity ${randomEntity} at (${Math.round(x)}, ${Math.round(y)})`);
+    } else {
+      console.log('No entities to center on');
+    }
+  }
+
+  // P: Pause/Resume (toggle p5 loop)
+  if (key === 'p' || key === 'P') {
     isPaused = !isPaused;
-    console.log(`Simulation ${isPaused ? 'paused' : 'resumed'}`);
+    if (isPaused) {
+      noLoop();
+      console.log('Simulation paused (noLoop)');
+    } else {
+      loop();
+      console.log('Simulation resumed (loop)');
+    }
   }
 
   // +: Speed up
@@ -318,6 +383,11 @@ function keyPressed() {
   if (key === 'r' || key === 'R') {
     camera.centerOn(CONFIG.WORLD_WIDTH / 2, CONFIG.WORLD_HEIGHT / 2);
     camera.zoom = CONFIG.CAMERA.INITIAL_ZOOM;
+    selectedEntity = null;
+
+    // Stop camera following
+    camera.stopFollowing();
+
     console.log('Camera reset to center');
   }
 
@@ -328,7 +398,7 @@ function keyPressed() {
   }
 
   // S: Spawn 10 random entities
-  if (key === 's' || key === 'S') {
+  if ((key === 's' || key === 'S') && !event.shiftKey) {
     let spawned = 0;
     for (let i = 0; i < 10; i++) {
       // Random position
@@ -351,8 +421,42 @@ function keyPressed() {
     console.log(`✨ Spawned ${spawned} random entities`);
   }
 
+  // Shift+S: Spawn 500 random entities
+  if ((key === 's' || key === 'S') && event.shiftKey) {
+    const toSpawn = 500;
+    let spawned = 0;
+
+    for (let i = 0; i < toSpawn; i++) {
+      // Random position
+      let x, y;
+      let attempts = 0;
+
+      // Find walkable spawn location
+      do {
+        x = Math.random() * CONFIG.WORLD_WIDTH;
+        y = Math.random() * CONFIG.WORLD_HEIGHT;
+        attempts++;
+      } while (!terrainGrid.isWalkable(Math.floor(x), Math.floor(y)) && attempts < 50);
+
+      if (attempts < 50) {
+        // 75% rabbits, 25% humans (to match initial spawn ratio)
+        const isRabbit = Math.random() < 0.75;
+        const isMale = Math.random() > 0.5;
+
+        if (isRabbit) {
+          createRabbit(ecsWorld, x, y, isMale);
+        } else {
+          createHuman(ecsWorld, x, y, isMale);
+        }
+        spawned++;
+      }
+    }
+
+    console.log(`✨ Mass spawned ${spawned} random entities (Shift+S)`);
+  }
+
   // K: Kill 10 random entities
-  if (key === 'k' || key === 'K') {
+  if ((key === 'k' || key === 'K') && !event.shiftKey) {
     const entities = allEntitiesQuery(ecsWorld);
     const toKill = Math.min(10, entities.length);
 
@@ -360,14 +464,30 @@ function keyPressed() {
       const randomIndex = Math.floor(Math.random() * entities.length);
       const eid = entities[randomIndex];
 
-      // Remove from world (move off map)
-      Position.x[eid] = -10000;
-      Position.y[eid] = -10000;
+      // Properly remove entity
+      removeEntityFromWorld(ecsWorld, eid);
 
       // Remove from array to avoid duplicate kills
       entities.splice(randomIndex, 1);
     }
     console.log(`☠️ Killed ${toKill} random entities`);
+  }
+
+  // Shift+K: Kill ALL entities
+  if ((key === 'k' || key === 'K') && event.shiftKey) {
+    const entities = allEntitiesQuery(ecsWorld);
+    const totalKilled = entities.length;
+
+    // Remove all entities (iterate backwards to avoid index issues)
+    for (let i = entities.length - 1; i >= 0; i--) {
+      removeEntityFromWorld(ecsWorld, entities[i]);
+    }
+
+    // Clear camera following if we killed the followed entity
+    camera.stopFollowing();
+    selectedEntity = null;
+
+    console.log(`💀💀💀 MASS EXTINCTION: Killed all ${totalKilled} entities (Shift+K)`);
   }
 }
 
@@ -379,6 +499,8 @@ function windowResized() {
 
 // Utility function to log simulation stats
 function logStats() {
+  if (!camera || !ecsWorld) return; // Wait for initialization
+
   console.log('--- Simulation Stats ---');
   console.log(`FPS: ${fpsDisplay}`);
   console.log(`Camera: (${Math.round(camera.x)}, ${Math.round(camera.y)}) @ ${camera.zoom.toFixed(2)}x`);
@@ -389,5 +511,21 @@ function logStats() {
   console.log(`Entities: ${counts.humans} humans, ${counts.rabbits} rabbits (${counts.humans + counts.rabbits} total)`);
 }
 
-// Call stats every 5 seconds for debugging
-setInterval(logStats, 5000);
+// Diagnostic: Check if setup() is ever called
+window.setupCalled = false;
+
+setTimeout(() => {
+  if (!window.setupCalled) {
+    console.error('DIAGNOSTIC: setup() was never called by p5.js after 2 seconds!');
+    console.error('This usually means p5.js did not initialize properly.');
+    console.error('Checking p5 state:', {
+      p5Defined: typeof p5 !== 'undefined',
+      createCanvasDefined: typeof createCanvas !== 'undefined',
+      setupDefined: typeof setup === 'function',
+      windowWidth: typeof windowWidth,
+      windowHeight: typeof windowHeight
+    });
+  } else {
+    console.log('✓ setup() was called successfully');
+  }
+}, 2000);

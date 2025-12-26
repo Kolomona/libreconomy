@@ -174,3 +174,19 @@ function getEntityCountBySpecies(world) {
 
   return { humans, rabbits };
 }
+
+// Remove an entity from the ECS world
+function removeEntityFromWorld(world, entityId) {
+  // Clear any decision intent first
+  if (typeof decisionSystem !== 'undefined' && decisionSystem) {
+    decisionSystem.clearIntent(entityId);
+  }
+
+  // Remove from libreconomy WASM bridge if it exists
+  if (typeof libreconomyStub !== 'undefined' && libreconomyStub && libreconomyStub.removeEntity) {
+    libreconomyStub.removeEntity(entityId);
+  }
+
+  // Remove from bitECS world
+  bitecs.removeEntity(world, entityId);
+}

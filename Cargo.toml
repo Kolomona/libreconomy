@@ -13,12 +13,13 @@ uniffi = { version = "0.28", features = ["build"] }
 rand = "0.8"
 wasm-bindgen = { version = "0.2", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
+getrandom = { version = "0.2", features = ["js"], optional = true }
 
 [features]
 default = []
 parallel = ["rayon"]
 uniffi = []
-wasm = ["wasm-bindgen", "serde-wasm-bindgen"]
+wasm = ["wasm-bindgen", "serde-wasm-bindgen", "getrandom"]
 
 [dev-dependencies]
 pretty_assertions = "1.4"

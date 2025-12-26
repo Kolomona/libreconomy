@@ -178,20 +178,15 @@ class ConsumptionSystem {
       Needs.hunger[humanId] = Math.max(0, hunger - this.consumptionRates.eating * 2); // Rabbits are filling
       State.current[humanId] = EntityState.EATING;
 
-      // Remove rabbit entity (TODO: proper entity removal in Phase 7)
-      // For now, just move it far away
-      Position.x[rabbitId] = -1000;
-      Position.y[rabbitId] = -1000;
-      this.decisionSystem.clearIntent(rabbitId);
+      // Remove eaten rabbit entity
+      removeEntityFromWorld(ecsWorld, rabbitId);
     } else {
       // Finished eating
       State.current[humanId] = EntityState.IDLE;
       this.decisionSystem.clearIntent(humanId);
 
       // Remove eaten rabbit
-      Position.x[rabbitId] = -1000;
-      Position.y[rabbitId] = -1000;
-      this.decisionSystem.clearIntent(rabbitId);
+      removeEntityFromWorld(ecsWorld, rabbitId);
     }
   }
 

@@ -1,6 +1,13 @@
 // bitECS component definitions
+console.log('✓ components.js loading...');
+
+if (typeof bitecs === 'undefined') {
+  console.error('FATAL: bitecs is not defined! Check script loading order.');
+  throw new Error('bitecs is not defined');
+}
 
 const { defineComponent, Types, defineQuery } = bitecs;
+console.log('✓ bitECS destructured successfully');
 
 // Position component (x, y in world coordinates)
 const Position = defineComponent({

@@ -57,12 +57,20 @@ class DecisionSystem {
           this.applyIntent(eid, intent, ecsWorld);
         } else {
           // Update target position
-          intent.target = {
-            x: Position.x[intent.targetEntity],
-            y: Position.y[intent.targetEntity]
-          };
-          Target.x[eid] = intent.target.x;
-          Target.y[eid] = intent.target.y;
+          const targetX = Position.x[intent.targetEntity];
+          const targetY = Position.y[intent.targetEntity];
+
+          // Validate target entity position
+          if (!isNaN(targetX) && !isNaN(targetY) && targetX !== undefined && targetY !== undefined) {
+            intent.target = { x: targetX, y: targetY };
+            Target.x[eid] = targetX;
+            Target.y[eid] = targetY;
+          } else {
+            // Target entity has invalid position, make new decision
+            intent = this.libreconomyStub.decide(eid, ecsWorld, this.worldQuery);
+            this.entityIntents.set(eid, intent);
+            this.applyIntent(eid, intent, ecsWorld);
+          }
         }
       }
     }
@@ -74,15 +82,14 @@ class DecisionSystem {
       case IntentType.SEEK_WATER:
       case IntentType.SEEK_FOOD:
         // Set target position
-        if (intent.target) {
+        if (intent.target && !isNaN(intent.target.x) && !isNaN(intent.target.y)) {
           Target.x[entityId] = intent.target.x;
           Target.y[entityId] = intent.target.y;
           Target.hasTarget[entityId] = 1;
           State.current[entityId] = EntityState.MOVING;
         } else {
-          // No target found nearby - wander to explore
-          console.warn(`Entity ${entityId} has ${this.libreconomyStub.getIntentName(intent.type)} intent but no target. Wandering.`);
-          const wanderTarget = this.libreconomyStub.getWanderTarget(entityId);
+          // No target found nearby or target is invalid - wander to explore
+          const wanderTarget = this.getWanderTarget(entityId);
           Target.x[entityId] = wanderTarget.x;
           Target.y[entityId] = wanderTarget.y;
           Target.hasTarget[entityId] = 1;
@@ -100,7 +107,7 @@ class DecisionSystem {
 
       case IntentType.WANDER:
         // Pick a random nearby location
-        const wanderTarget = this.libreconomyStub.getWanderTarget(entityId);
+        const wanderTarget = this.getWanderTarget(entityId);
         Target.x[entityId] = wanderTarget.x;
         Target.y[entityId] = wanderTarget.y;
         Target.hasTarget[entityId] = 1;
@@ -136,5 +143,26 @@ class DecisionSystem {
   // Clear intent (when entity dies, etc.)
   clearIntent(entityId) {
     this.entityIntents.delete(entityId);
+  }
+
+  // Calculate a random wander target near an entity
+  getWanderTarget(entityId) {
+    const x = Position.x[entityId];
+    const y = Position.y[entityId];
+
+    // GUARD: Validate position - use world center as safe fallback if invalid
+    if (isNaN(x) || isNaN(y) || x === undefined || y === undefined) {
+      return {
+        x: CONFIG.WORLD_WIDTH / 2,
+        y: CONFIG.WORLD_HEIGHT / 2
+      };
+    }
+
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.random() * 200 + 50;
+    const targetX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH, x + Math.cos(angle) * distance));
+    const targetY = Math.max(0, Math.min(CONFIG.WORLD_HEIGHT, y + Math.sin(angle) * distance));
+
+    return { x: targetX, y: targetY };
   }
 }

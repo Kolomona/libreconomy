@@ -46,8 +46,8 @@ class MovementSystem {
       const dy = Target.y[eid] - Position.y[eid];
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // Check if arrived at target
-      if (distance <= this.arrivalThreshold) {
+      // Check if arrived at target or distance is zero (CRITICAL: prevents NaN from division by zero)
+      if (distance <= this.arrivalThreshold || distance === 0) {
         // Reached target
         Velocity.vx[eid] = 0;
         Velocity.vy[eid] = 0;
@@ -56,7 +56,7 @@ class MovementSystem {
         continue;
       }
 
-      // Normalize direction
+      // Normalize direction (safe now - distance > 0)
       const dirX = dx / distance;
       const dirY = dy / distance;
 
@@ -90,6 +90,16 @@ class MovementSystem {
       // Update position
       let newX = Position.x[eid] + Velocity.vx[eid];
       let newY = Position.y[eid] + Velocity.vy[eid];
+
+      // GUARD: Validate new position before applying
+      if (isNaN(newX) || isNaN(newY)) {
+        // Position calculation resulted in NaN, stop movement
+        Velocity.vx[eid] = 0;
+        Velocity.vy[eid] = 0;
+        Target.hasTarget[eid] = 0;
+        State.current[eid] = EntityState.IDLE;
+        continue;
+      }
 
       // Clamp to world bounds
       newX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH - 1, newX));

@@ -136,11 +136,13 @@
         <div class="control-line">• Click: Select entity</div>
         <div class="control-line">• Drag: Pan camera</div>
         <div class="control-line">• Scroll: Zoom in/out</div>
-        <div class="control-line">• Double-click: Center view</div>
-        <div class="control-line">• Space: Pause/Resume</div>
+        <div class="control-line">• Space: Focus random entity</div>
+        <div class="control-line">• P: Pause/Resume</div>
         <div class="control-line">• +/-: Speed up/slow down</div>
         <div class="control-line">• S: Spawn 10 entities</div>
+        <div class="control-line">• Shift+S: Mass spawn 500 entities</div>
         <div class="control-line">• K: Kill 10 entities</div>
+        <div class="control-line">• Shift+K: Kill ALL entities</div>
         <div class="control-line">• R: Reset camera</div>
         <div class="control-line">• H: Toggle help</div>
     </div>
@@ -158,10 +160,48 @@
         window.dispatchEvent(new Event('bitecs-loaded'));
     </script>
 
-    <!-- Load application files (wait for bitECS) -->
+    <!-- Load WASM libreconomy module -->
+    <script type="module">
+        import init, { WasmWorld, WasmDecisionMaker } from './pkg/libreconomy.js';
+
+        // Initialize WASM in async function
+        (async () => {
+            await init();
+            console.log('✓ WASM libreconomy initialized');
+
+            // Make WASM classes globally available
+            window.WasmWorld = WasmWorld;
+            window.WasmDecisionMaker = WasmDecisionMaker;
+
+            // Signal that WASM is loaded
+            window.wasmLoaded = true;
+            window.dispatchEvent(new Event('wasm-loaded'));
+        })();
+    </script>
+
+    <!-- Load application files (wait for bitECS and WASM) -->
     <script>
-        // Wait for bitECS to load before loading the rest
+        // Wait for both bitECS and WASM to load before loading the rest
+        let bitecsReady = false;
+        let wasmReady = false;
+
+        function checkReady() {
+            if (bitecsReady && wasmReady) {
+                loadApplicationScripts();
+            }
+        }
+
         window.addEventListener('bitecs-loaded', () => {
+            bitecsReady = true;
+            checkReady();
+        });
+
+        window.addEventListener('wasm-loaded', () => {
+            wasmReady = true;
+            checkReady();
+        });
+
+        function loadApplicationScripts() {
             const scripts = [
                 'src/config.js',
                 'src/terrain/grid.js',
@@ -175,27 +215,37 @@
                 'src/ecs/systems/movement.js',
                 'src/ecs/systems/consumption.js',
                 'src/ecs/systems/render.js',
-                'src/libreconomy-stub.js',
+                'src/libreconomy-wasm-bridge.js',
                 'src/world-query.js',
                 'sketch.js'
             ];
 
             // Load scripts sequentially
             function loadScript(index) {
-                if (index >= scripts.length) return;
+                if (index >= scripts.length) {
+                    console.log('✓ All scripts loaded successfully');
+                    console.log('✓ Starting p5.js...');
+                    // Manually start p5.js now that setup() and draw() are defined
+                    new p5();
+                    return;
+                }
 
+                console.log(`Loading script ${index + 1}/${scripts.length}: ${scripts[index]}`);
                 const script = document.createElement('script');
                 script.src = scripts[index];
-                script.onload = () => loadScript(index + 1);
-                script.onerror = () => {
-                    console.error('Failed to load:', scripts[index]);
+                script.onload = () => {
+                    console.log(`✓ Loaded: ${scripts[index]}`);
+                    loadScript(index + 1);
+                };
+                script.onerror = (error) => {
+                    console.error('Failed to load:', scripts[index], error);
                     loadScript(index + 1);
                 };
                 document.body.appendChild(script);
             }
 
             loadScript(0);
-        });
+        }
     </script>
 </body>
 </html>

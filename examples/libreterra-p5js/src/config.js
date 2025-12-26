@@ -1,4 +1,5 @@
 // Configuration and constants for libreterra
+console.log('✓ config.js loading...');
 
 const CONFIG = {
   // World dimensions
@@ -7,7 +8,7 @@ const CONFIG = {
 
   // Camera settings
   CAMERA: {
-    INITIAL_ZOOM: 1.0,
+    INITIAL_ZOOM: 0.1,  // Start zoomed out to see more of the world
     MIN_ZOOM: 0.1,
     MAX_ZOOM: 5.0,
     ZOOM_SPEED: 0.1,
@@ -116,3 +117,5 @@ const IntentType = {
   REST: 'Rest',
   WANDER: 'Wander',
 };
+
+console.log('✓ config.js loaded successfully');

@@ -8,7 +8,7 @@ use specs::WorldExt;
 
 use crate::{
     UtilityMaximizer, DecisionThresholds, UtilityWeights,
-    WorldQuery, ResourceLocation, AgentId,
+    WorldQuery, ResourceLocation, AgentId, DecisionOutput, Intent,
 };
 use super::world::WasmWorld;
 
@@ -74,25 +74,8 @@ impl<'a> WorldQuery for JsWorldQueryAdapter<'a> {
 
 /// WASM wrapper for decision-making system
 ///
-/// # Example (JavaScript)
-/// ```javascript
-/// import init, { WasmWorld, WasmDecisionMaker } from './libreconomy.js';
-///
-/// await init();
-/// const world = new WasmWorld();
-/// const decisionMaker = WasmDecisionMaker.new();
-///
-/// // Create a WorldQuery implementation
-/// const worldQuery = {
-///   getNearbyAgents: (agentId, maxCount) => { /* ... */ return []; },
-///   getNearbyResources: (agentId, resourceType, maxRadius) => { /* ... */ return []; },
-///   canInteract: (agent1Id, agent2Id) => { /* ... */ return true; }
-/// };
-///
-/// const agentId = world.create_agent();
-/// const decision = decisionMaker.decide(world, agentId, worldQuery);
-/// console.log(decision);
-/// ```
+/// Create a decision maker and use it to generate agent decisions.
+/// Requires a WorldQuery implementation to provide spatial information.
 #[wasm_bindgen]
 pub struct WasmDecisionMaker {
     inner: UtilityMaximizer,
@@ -172,6 +155,151 @@ impl WasmDecisionMaker {
 
         // Serialize to JsValue
         serde_wasm_bindgen::to_value(&decision).unwrap_or(JsValue::NULL)
+    }
+
+    /// Make a decision for libreterra (returns compatible format)
+    ///
+    /// Returns a decision result compatible with libreconomy-stub.js format.
+    /// This provides a more JavaScript-friendly interface for libreterra.
+    ///
+    /// # Arguments
+    /// * `world` - The WASM world containing the agent
+    /// * `entity_id` - The agent's entity ID
+    /// * `world_query` - JavaScript object implementing WorldQuery interface
+    ///
+    /// # Returns
+    /// JsDecisionResult with intent type, targets, utility, and reason
+    pub fn decide_libreterra(
+        &self,
+        world: &WasmWorld,
+        entity_id: u32,
+        world_query: &JsWorldQuery,
+    ) -> JsDecisionResult {
+        let entity = world.get_world().entities().entity(entity_id);
+        let query_adapter = JsWorldQueryAdapter { js_query: world_query };
+        let decision = self.inner.decide(entity, world.get_world(), &query_adapter);
+
+        // Convert DecisionOutput to JsDecisionResult
+        match decision {
+            DecisionOutput::Intent(intent) => match intent {
+                Intent::SeekItem { item_type, urgency } => {
+                    let intent_type = if item_type == "water" {
+                        "SEEK_WATER".to_string()
+                    } else {
+                        "SEEK_FOOD".to_string()
+                    };
+
+                    JsDecisionResult {
+                        intent_type,
+                        target_x: 0.0,
+                        target_y: 0.0,
+                        has_target: false,
+                        target_entity: 0,
+                        has_target_entity: false,
+                        utility: urgency,
+                        reason: format!("Seeking {} (urgency: {:.2})", item_type, urgency),
+                    }
+                }
+                Intent::Rest => JsDecisionResult {
+                    intent_type: "REST".to_string(),
+                    target_x: 0.0,
+                    target_y: 0.0,
+                    has_target: false,
+                    target_entity: 0,
+                    has_target_entity: false,
+                    utility: 0.5,
+                    reason: "Resting to recover".to_string(),
+                },
+                Intent::Wander => JsDecisionResult {
+                    intent_type: "WANDER".to_string(),
+                    target_x: 0.0,
+                    target_y: 0.0,
+                    has_target: false,
+                    target_entity: 0,
+                    has_target_entity: false,
+                    utility: 0.1,
+                    reason: "Idle exploration".to_string(),
+                },
+                _ => JsDecisionResult {
+                    intent_type: "WANDER".to_string(),
+                    target_x: 0.0,
+                    target_y: 0.0,
+                    has_target: false,
+                    target_entity: 0,
+                    has_target_entity: false,
+                    utility: 0.1,
+                    reason: "Unsupported intent type".to_string(),
+                },
+            },
+            _ => JsDecisionResult {
+                intent_type: "WANDER".to_string(),
+                target_x: 0.0,
+                target_y: 0.0,
+                has_target: false,
+                target_entity: 0,
+                has_target_entity: false,
+                utility: 0.1,
+                reason: "No intent available".to_string(),
+            },
+        }
+    }
+}
+
+/// JavaScript-friendly decision result
+///
+/// Converts Rust DecisionOutput to a format matching libreconomy-stub.js
+#[wasm_bindgen]
+pub struct JsDecisionResult {
+    intent_type: String,
+    target_x: f32,
+    target_y: f32,
+    has_target: bool,
+    target_entity: u32,
+    has_target_entity: bool,
+    utility: f32,
+    reason: String,
+}
+
+#[wasm_bindgen]
+impl JsDecisionResult {
+    #[wasm_bindgen(getter)]
+    pub fn intent_type(&self) -> String {
+        self.intent_type.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn target_x(&self) -> f32 {
+        self.target_x
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn target_y(&self) -> f32 {
+        self.target_y
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn has_target(&self) -> bool {
+        self.has_target
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn target_entity(&self) -> u32 {
+        self.target_entity
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn has_target_entity(&self) -> bool {
+        self.has_target_entity
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn utility(&self) -> f32 {
+        self.utility
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn reason(&self) -> String {
+        self.reason.clone()
     }
 }
 

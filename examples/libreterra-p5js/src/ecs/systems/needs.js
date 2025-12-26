@@ -137,7 +137,7 @@ class DeathSystem {
 
         // Die after being critical for too long
         if (this.criticalNeedTime.get(eid) >= this.timeToDieFrames) {
-          this.killEntity(eid, isStarving ? 'starvation' : 'dehydration');
+          this.killEntity(eid, isStarving ? 'starvation' : 'dehydration', ecsWorld);
           this.criticalNeedTime.delete(eid);
         }
       } else {
@@ -147,16 +147,13 @@ class DeathSystem {
     }
   }
 
-  killEntity(entityId, cause) {
+  killEntity(entityId, cause, ecsWorld) {
     const species = SpeciesComponent.type[entityId] === Species.HUMAN ? 'Human' : 'Rabbit';
     const gender = Gender.isMale[entityId] ? 'Male' : 'Female';
     console.log(`💀 Entity ${entityId} (${gender} ${species}) died from ${cause}`);
 
-    // Move entity far off map (proper removal would use removeEntity from bitecs)
-    Position.x[entityId] = -10000;
-    Position.y[entityId] = -10000;
-
-    // Could add death animation or visual effect here
+    // Properly remove entity from ECS world
+    removeEntityFromWorld(ecsWorld, entityId);
   }
 
   // Get time until death for entity (for debugging/UI)

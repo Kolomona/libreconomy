@@ -16,6 +16,16 @@ class CameraSystem {
     // Double-click detection
     this.lastClickTime = 0;
     this.doubleClickDelay = 300; // ms
+
+    // Camera following state
+    this.followEntityId = null;        // Entity to follow (null = no following)
+    this.followSpeed = 0.08;           // Lerp speed (0-1, lower = smoother)
+    this.followDeadzone = 30;          // Pixels before camera starts moving
+    this.followLookAhead = 50;         // Predict entity position based on velocity
+    this.smoothPosition = {            // Smoothed target position
+      x: this.x,
+      y: this.y
+    };
   }
 
   // Handle mouse pressed
@@ -45,6 +55,12 @@ class CameraSystem {
 
       // Clamp to world bounds
       this.clampToBounds();
+
+      // Stop following when user manually pans
+      if (this.isFollowing()) {
+        this.stopFollowing();
+        console.log('Camera following stopped (manual pan)');
+      }
     }
   }
 
@@ -85,6 +101,94 @@ class CameraSystem {
     this.x = worldX;
     this.y = worldY;
     this.clampToBounds();
+  }
+
+  // Update camera following (call before apply() in draw loop)
+  update(ecsWorld) {
+    // Early exit if not following anything
+    if (this.followEntityId === null) {
+      return;
+    }
+
+    // Check if followed entity still exists
+    const entities = allEntitiesQuery(ecsWorld);
+    if (!entities.includes(this.followEntityId)) {
+      this.followEntityId = null;  // Stop following if entity disappeared
+      return;
+    }
+
+    // Get entity position
+    const targetX = Position.x[this.followEntityId];
+    const targetY = Position.y[this.followEntityId];
+
+    // Validate position (handle NaN or undefined)
+    if (isNaN(targetX) || isNaN(targetY) || targetX === undefined || targetY === undefined) {
+      return;  // Don't move camera if entity has invalid position
+    }
+
+    // Calculate look-ahead offset based on entity velocity (if moving)
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (Velocity && this.followLookAhead > 0) {
+      const vx = Velocity.vx[this.followEntityId] || 0;
+      const vy = Velocity.vy[this.followEntityId] || 0;
+      const speed = Math.sqrt(vx * vx + vy * vy);
+
+      if (speed > 0.1) {  // Only apply look-ahead if entity is moving
+        offsetX = (vx / speed) * this.followLookAhead;
+        offsetY = (vy / speed) * this.followLookAhead;
+      }
+    }
+
+    // Target position with look-ahead
+    const desiredX = targetX + offsetX;
+    const desiredY = targetY + offsetY;
+
+    // Smooth target position (first-order filter)
+    const alpha = 0.15;  // Smoothing for target (higher = snappier)
+    this.smoothPosition.x += (desiredX - this.smoothPosition.x) * alpha;
+    this.smoothPosition.y += (desiredY - this.smoothPosition.y) * alpha;
+
+    // Calculate distance from camera to smooth target
+    const dx = this.smoothPosition.x - this.x;
+    const dy = this.smoothPosition.y - this.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Apply deadzone - only move if outside deadzone radius
+    if (distance > this.followDeadzone) {
+      // Lerp camera toward smooth target
+      this.x += dx * this.followSpeed;
+      this.y += dy * this.followSpeed;
+
+      // Clamp camera to world bounds
+      this.clampToBounds();
+    }
+  }
+
+  // Start following an entity
+  startFollowing(entityId) {
+    this.followEntityId = entityId;
+
+    // Initialize smooth position to entity position (prevents initial jump)
+    if (entityId !== null) {
+      const x = Position.x[entityId];
+      const y = Position.y[entityId];
+      if (!isNaN(x) && !isNaN(y)) {
+        this.smoothPosition.x = x;
+        this.smoothPosition.y = y;
+      }
+    }
+  }
+
+  // Stop following
+  stopFollowing() {
+    this.followEntityId = null;
+  }
+
+  // Check if currently following an entity
+  isFollowing() {
+    return this.followEntityId !== null;
   }
 
   // Clamp camera to world bounds

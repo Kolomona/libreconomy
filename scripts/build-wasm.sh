@@ -27,15 +27,22 @@ fi
 # Build the WASM package
 wasm-pack build \
     --target "$TARGET" \
-    --features wasm \
-    --out-dir pkg \
-    --scope libreconomy
+    --features wasm
 
 echo "✓ Build complete!"
 echo "Output: pkg/"
 echo ""
 echo "Files generated:"
 ls -lh pkg/
+
+# Copy to libreterra example
+if [ -d "examples/libreterra-p5js" ]; then
+    echo ""
+    echo "Copying to libreterra-p5js..."
+    mkdir -p examples/libreterra-p5js/pkg
+    cp -r pkg/* examples/libreterra-p5js/pkg/
+    echo "✓ Copied to examples/libreterra-p5js/pkg/"
+fi
 
 echo ""
 echo "To use in a web project:"
