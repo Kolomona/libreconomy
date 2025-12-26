@@ -71,7 +71,7 @@ function setup() {
   libreconomyStub = new LibreconomyWasmBridge();
   libreconomyStub.initialize(WasmWorld, WasmDecisionMaker);
   console.log('✓ WASM bridge initialized');
-  needsDecaySystem = new NeedsDecaySystem();
+  needsDecaySystem = new NeedsDecaySystem(terrainGrid);
   decisionSystem = new DecisionSystem(libreconomyStub, worldQuery);
 
   // Initialize movement and consumption systems (Phase 6)
@@ -90,7 +90,7 @@ function setup() {
     console.log(`Press SPACE to center on a random entity`);
 
     // Start stats logging after initialization
-    setInterval(logStats, 5000);
+    setInterval(logStats, 25000);
   } catch (error) {
     console.error('FATAL ERROR in setup():', error);
     console.error('Stack trace:', error.stack);

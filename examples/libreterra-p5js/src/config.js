@@ -39,8 +39,8 @@ const CONFIG = {
 
   // Simulation settings
   SIMULATION: {
-    INITIAL_HUMANS: 100,   // Increased from 10 (10x more)
-    INITIAL_RABBITS: 300,  // Increased from 30 (10x more)
+    INITIAL_HUMANS: 1,   
+    INITIAL_RABBITS: 1,  
     TARGET_FPS: 60,
     TIME_SCALE: 1.0,  // Can be modified for speed control
     PAUSED: false,
@@ -85,6 +85,9 @@ const CONFIG = {
     GRASS_THRESHOLD: 0.6,
     ROCKY_THRESHOLD: 0.8,
   },
+
+  // Species terrain attributes (traversability and costs)
+  SPECIES_TERRAIN_ATTRIBUTES: {},  // Populated below after enums are defined
 };
 
 // Terrain type enum
@@ -116,6 +119,22 @@ const IntentType = {
   SEEK_FOOD: 'SeekFood',
   REST: 'Rest',
   WANDER: 'Wander',
+};
+
+// Populate species terrain attributes after enums are defined
+CONFIG.SPECIES_TERRAIN_ATTRIBUTES = {
+  [Species.HUMAN]: {
+    [TerrainType.GRASS]: { speedMultiplier: 1.0, energyMultiplier: 1.0 },
+    [TerrainType.DIRT]: { speedMultiplier: 1.0, energyMultiplier: 1.0 },
+    [TerrainType.ROCKY]: { speedMultiplier: 0.3, energyMultiplier: 3.0 },  // 70% penalty
+    [TerrainType.WATER]: { speedMultiplier: 0.25, energyMultiplier: 3.0 }, // Swimming
+  },
+  [Species.RABBIT]: {
+    [TerrainType.GRASS]: { speedMultiplier: 1.0, energyMultiplier: 1.0 },
+    [TerrainType.DIRT]: { speedMultiplier: 1.0, energyMultiplier: 1.0 },
+    [TerrainType.ROCKY]: { speedMultiplier: 0.5, energyMultiplier: 2.0 },  // 50% penalty
+    [TerrainType.WATER]: { speedMultiplier: 0.1, energyMultiplier: 4.0 },  // Poor swimmers
+  },
 };
 
 console.log('✓ config.js loaded successfully');

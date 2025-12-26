@@ -168,8 +168,29 @@ class LibreconomyWasmBridge {
       target: target,
       targetEntity: targetEntity,
       utility: decision.utility,
+      urgency: this.calculateUrgency(entityId, intentType),
       reason: decision.reason
     };
+  }
+
+  // Calculate urgency (0-100) based on need pain levels
+  calculateUrgency(entityId, intentType) {
+    const thirst = Needs.thirst[entityId];
+    const hunger = Needs.hunger[entityId];
+    const tiredness = Needs.tiredness[entityId];
+
+    switch (intentType) {
+      case IntentType.SEEK_WATER:
+        return thirst;  // Urgency = pain level
+      case IntentType.SEEK_FOOD:
+        return hunger;
+      case IntentType.REST:
+        return tiredness;
+      case IntentType.WANDER:
+        return 0;  // No urgency, just exploring
+      default:
+        return 0;
+    }
   }
 
   // Convert WASM intent type strings to libreterra IntentType enum

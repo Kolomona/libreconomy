@@ -32,6 +32,16 @@ class MovementSystem {
       const hasTarget = Target.hasTarget[eid];
       const state = State.current[eid];
 
+      // Validate state/target consistency
+      if (hasTarget === 0 && state === EntityState.MOVING) {
+        // INCONSISTENT: Entity is MOVING but has no target
+        // This indicates a bug - fix it by setting state to IDLE
+        State.current[eid] = EntityState.IDLE;
+        Velocity.vx[eid] = 0;
+        Velocity.vy[eid] = 0;
+        continue;
+      }
+
       // Skip if not moving or has no target
       if (hasTarget === 0 || state !== EntityState.MOVING) {
         Velocity.vx[eid] = 0;
@@ -48,10 +58,13 @@ class MovementSystem {
 
       // Check if arrived at target or distance is zero (CRITICAL: prevents NaN from division by zero)
       if (distance <= this.arrivalThreshold || distance === 0) {
-        // Reached target
+        // Reached target - stop moving
         Velocity.vx[eid] = 0;
         Velocity.vy[eid] = 0;
         Target.hasTarget[eid] = 0;
+
+        // Set state to IDLE - let DecisionSystem decide next action
+        // ConsumptionSystem will handle resource interactions if entity is at a resource
         State.current[eid] = EntityState.IDLE;
         continue;
       }
@@ -70,6 +83,14 @@ class MovementSystem {
       if (hunger > 80 || thirst > 80) {
         speed = speedConfig.run;
       }
+
+      // Apply terrain-based speed modifier
+      const terrain = this.terrainGrid.get(
+        Math.floor(Position.x[eid]),
+        Math.floor(Position.y[eid])
+      );
+      const terrainAttributes = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][terrain];
+      speed *= terrainAttributes.speedMultiplier;
 
       // Apply speed modifier based on delta time
       speed *= deltaTime;
@@ -105,24 +126,32 @@ class MovementSystem {
       newX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH - 1, newX));
       newY = Math.max(0, Math.min(CONFIG.WORLD_HEIGHT - 1, newY));
 
-      // Check if new position is walkable
-      if (this.terrainGrid.isWalkable(Math.floor(newX), Math.floor(newY))) {
+      // Check if new position is traversable for this species
+      const targetTerrain = this.terrainGrid.get(Math.floor(newX), Math.floor(newY));
+      const targetAttributes = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][targetTerrain];
+
+      if (targetAttributes.speedMultiplier > 0) {
+        // Terrain is traversable - allow movement
         Position.x[eid] = newX;
         Position.y[eid] = newY;
       } else {
-        // Hit obstacle, try sliding along it
+        // Terrain is impassable for this species, try sliding along it
         const slideX = Position.x[eid] + Velocity.vx[eid];
         const slideY = Position.y[eid];
+        const slideTerrainX = this.terrainGrid.get(Math.floor(slideX), Math.floor(slideY));
+        const slideAttributesX = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][slideTerrainX];
 
-        if (this.terrainGrid.isWalkable(Math.floor(slideX), Math.floor(slideY))) {
+        if (slideAttributesX.speedMultiplier > 0) {
           Position.x[eid] = slideX;
           Position.y[eid] = slideY;
         } else {
           // Try sliding vertically
           const slideX2 = Position.x[eid];
           const slideY2 = Position.y[eid] + Velocity.vy[eid];
+          const slideTerrainY = this.terrainGrid.get(Math.floor(slideX2), Math.floor(slideY2));
+          const slideAttributesY = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][slideTerrainY];
 
-          if (this.terrainGrid.isWalkable(Math.floor(slideX2), Math.floor(slideY2))) {
+          if (slideAttributesY.speedMultiplier > 0) {
             Position.x[eid] = slideX2;
             Position.y[eid] = slideY2;
           } else {

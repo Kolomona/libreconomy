@@ -17,7 +17,7 @@ class ConsumptionSystem {
     this.interactionRange = 10;
 
     // Minimum need level before stopping consumption
-    this.satisfiedThreshold = 20;
+    this.satisfiedThreshold = 7;  // Mostly satisfied, small buffer
   }
 
   update(ecsWorld) {
@@ -30,7 +30,17 @@ class ConsumptionSystem {
       // Handle different states
       switch (state) {
         case EntityState.IDLE:
-          this.handleIdleConsumption(eid, species);
+          this.handleIdleConsumption(eid, species, ecsWorld);
+          break;
+
+        case EntityState.DRINKING:
+          // Handle continuous drinking
+          this.handleDrinking(eid);
+          break;
+
+        case EntityState.EATING:
+          // Handle continuous eating
+          this.handleEating(eid, species, ecsWorld);
           break;
 
         case EntityState.SLEEPING:
@@ -39,14 +49,14 @@ class ConsumptionSystem {
 
         case EntityState.MOVING:
           // Check if entity reached a resource target
-          this.checkResourceReached(eid, species);
+          this.checkResourceReached(eid, species, ecsWorld);
           break;
       }
     }
   }
 
   // Handle consumption when entity is idle at a resource
-  handleIdleConsumption(entityId, species) {
+  handleIdleConsumption(entityId, species, ecsWorld) {
     const intent = this.decisionSystem.getIntent(entityId);
     if (!intent) return;
 
@@ -77,7 +87,7 @@ class ConsumptionSystem {
   }
 
   // Check if moving entity has reached its resource target
-  checkResourceReached(entityId, species) {
+  checkResourceReached(entityId, species, ecsWorld) {
     const intent = this.decisionSystem.getIntent(entityId);
     if (!intent || !intent.target) return;
 
@@ -117,77 +127,23 @@ class ConsumptionSystem {
 
   // Consume water (reduce thirst)
   consumeWater(entityId) {
-    const thirst = Needs.thirst[entityId];
-
-    if (thirst > this.satisfiedThreshold) {
-      Needs.thirst[entityId] = Math.max(0, thirst - this.consumptionRates.drinking);
-      State.current[entityId] = EntityState.DRINKING;
-    } else {
-      // Finished drinking
-      State.current[entityId] = EntityState.IDLE;
-      this.decisionSystem.clearIntent(entityId);
-    }
+    // Transition to DRINKING state
+    // (handleDrinking will take over on next frame)
+    State.current[entityId] = EntityState.DRINKING;
   }
 
   // Consume grass (reduce hunger, convert grass to dirt)
   consumeGrass(entityId, x, y) {
-    const hunger = Needs.hunger[entityId];
-
-    if (hunger > this.satisfiedThreshold) {
-      Needs.hunger[entityId] = Math.max(0, hunger - this.consumptionRates.eating);
-      State.current[entityId] = EntityState.EATING;
-
-      // Deplete grass (convert to dirt)
-      // Only deplete occasionally to make grass last longer
-      if (Math.random() < 0.1) {
-        this.terrainGrid.depleteGrass(x, y);
-      }
-    } else {
-      // Finished eating
-      State.current[entityId] = EntityState.IDLE;
-      this.decisionSystem.clearIntent(entityId);
-    }
+    // Transition to EATING state
+    // (handleEating will take over on next frame)
+    State.current[entityId] = EntityState.EATING;
   }
 
   // Consume rabbit (reduce hunger, remove rabbit entity)
   consumeRabbit(humanId, rabbitId, ecsWorld) {
-    const hunger = Needs.hunger[humanId];
-
-    // Check if rabbit still exists
-    const entities = allEntitiesQuery(ecsWorld);
-    if (!entities.includes(rabbitId)) {
-      // Rabbit is gone
-      State.current[humanId] = EntityState.IDLE;
-      this.decisionSystem.clearIntent(humanId);
-      return;
-    }
-
-    // Check if rabbit is close enough
-    const dx = Position.x[rabbitId] - Position.x[humanId];
-    const dy = Position.y[rabbitId] - Position.y[humanId];
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance > this.interactionRange) {
-      // Rabbit escaped, back to moving
-      State.current[humanId] = EntityState.MOVING;
-      return;
-    }
-
-    if (hunger > this.satisfiedThreshold) {
-      // Eating rabbit
-      Needs.hunger[humanId] = Math.max(0, hunger - this.consumptionRates.eating * 2); // Rabbits are filling
-      State.current[humanId] = EntityState.EATING;
-
-      // Remove eaten rabbit entity
-      removeEntityFromWorld(ecsWorld, rabbitId);
-    } else {
-      // Finished eating
-      State.current[humanId] = EntityState.IDLE;
-      this.decisionSystem.clearIntent(humanId);
-
-      // Remove eaten rabbit
-      removeEntityFromWorld(ecsWorld, rabbitId);
-    }
+    // Transition to EATING state
+    // (handleEating will manage the consumption and rabbit removal)
+    State.current[humanId] = EntityState.EATING;
   }
 
   // Handle sleeping (reduce tiredness)
@@ -198,6 +154,80 @@ class ConsumptionSystem {
       Needs.tiredness[entityId] = Math.max(0, tiredness - this.consumptionRates.sleeping);
     } else {
       // Finished sleeping
+      State.current[entityId] = EntityState.IDLE;
+      this.decisionSystem.clearIntent(entityId);
+    }
+  }
+
+  // Handle continuous drinking (entity is at water)
+  handleDrinking(entityId) {
+    const thirst = Needs.thirst[entityId];
+
+    if (thirst > this.satisfiedThreshold) {
+      // Continue drinking
+      Needs.thirst[entityId] = Math.max(0, thirst - this.consumptionRates.drinking);
+    } else {
+      // Finished drinking
+      State.current[entityId] = EntityState.IDLE;
+      this.decisionSystem.clearIntent(entityId);
+    }
+  }
+
+  // Handle continuous eating (entity is at food)
+  handleEating(entityId, species, ecsWorld) {
+    const hunger = Needs.hunger[entityId];
+
+    if (hunger > this.satisfiedThreshold) {
+      // Continue eating
+      const intent = this.decisionSystem.getIntent(entityId);
+
+      // Check if hunting rabbit (humans only)
+      if (species === Species.HUMAN && intent && intent.targetEntity !== undefined) {
+        const rabbitId = intent.targetEntity;
+        const entities = allEntitiesQuery(ecsWorld);
+
+        if (entities.includes(rabbitId)) {
+          // Check if rabbit is still close
+          const dx = Position.x[rabbitId] - Position.x[entityId];
+          const dy = Position.y[rabbitId] - Position.y[entityId];
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance <= this.interactionRange) {
+            // Eating rabbit (more filling)
+            Needs.hunger[entityId] = Math.max(0, hunger - this.consumptionRates.eating * 2);
+          } else {
+            // Rabbit escaped, back to moving
+            State.current[entityId] = EntityState.MOVING;
+            return;
+          }
+        } else {
+          // Rabbit is gone
+          State.current[entityId] = EntityState.IDLE;
+          this.decisionSystem.clearIntent(entityId);
+          return;
+        }
+      } else if (species === Species.RABBIT) {
+        // Eating grass
+        Needs.hunger[entityId] = Math.max(0, hunger - this.consumptionRates.eating);
+
+        // Deplete grass occasionally
+        const x = Math.floor(Position.x[entityId]);
+        const y = Math.floor(Position.y[entityId]);
+        const terrain = this.terrainGrid.get(x, y);
+
+        if (terrain === TerrainType.GRASS && Math.random() < 0.1) {
+          this.terrainGrid.depleteGrass(x, y);
+        }
+      }
+
+      State.current[entityId] = EntityState.EATING;
+    } else {
+      // Finished eating - remove rabbit if applicable
+      const intent = this.decisionSystem.getIntent(entityId);
+      if (species === Species.HUMAN && intent && intent.targetEntity !== undefined) {
+        removeEntityFromWorld(ecsWorld, intent.targetEntity);
+      }
+
       State.current[entityId] = EntityState.IDLE;
       this.decisionSystem.clearIntent(entityId);
     }

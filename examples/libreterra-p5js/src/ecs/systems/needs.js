@@ -2,7 +2,9 @@
 // Gradually increases hunger, thirst, and tiredness over time
 
 class NeedsDecaySystem {
-  constructor() {
+  constructor(terrainGrid) {
+    this.terrainGrid = terrainGrid;
+
     // Decay rates per frame (at 30 FPS)
     // These values determine how quickly needs increase
     this.decayRates = {
@@ -42,24 +44,55 @@ class NeedsDecaySystem {
       const species = SpeciesComponent.type[eid];
       const state = State.current[eid];
 
-      // Determine if entity is active (moving)
-      const isActive = state === EntityState.MOVING;
-
       // Get species multipliers
       const speciesMultiplier = species === Species.RABBIT
         ? this.decayRates.rabbit
         : this.decayRates.human;
 
-      // Calculate decay amounts
+      // Calculate BASE decay amounts (before state modifiers)
       let hungerDecay = this.decayRates.hunger * speciesMultiplier.hunger * deltaTime;
       let thirstDecay = this.decayRates.thirst * speciesMultiplier.thirst * deltaTime;
       let tirednessDecay = this.decayRates.tiredness * speciesMultiplier.tiredness * deltaTime;
 
-      // Apply activity multipliers if moving
-      if (isActive) {
-        hungerDecay *= this.decayRates.activityMultiplier.hunger;
-        thirstDecay *= this.decayRates.activityMultiplier.thirst;
-        tirednessDecay *= this.decayRates.activityMultiplier.tiredness;
+      // Apply state-specific modifiers
+      switch (state) {
+        case EntityState.MOVING:
+          // Moving: apply activity multipliers (increased decay)
+          hungerDecay *= this.decayRates.activityMultiplier.hunger;
+          thirstDecay *= this.decayRates.activityMultiplier.thirst;
+          tirednessDecay *= this.decayRates.activityMultiplier.tiredness;
+
+          // Apply terrain-based energy cost when moving
+          const terrain = this.terrainGrid.get(
+            Math.floor(Position.x[eid]),
+            Math.floor(Position.y[eid])
+          );
+          const terrainAttributes = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][terrain];
+          hungerDecay *= terrainAttributes.energyMultiplier;
+          thirstDecay *= terrainAttributes.energyMultiplier;
+          tirednessDecay *= terrainAttributes.energyMultiplier;
+          break;
+
+        case EntityState.DRINKING:
+          // Drinking: thirst doesn't increase, other needs normal
+          thirstDecay = 0;
+          break;
+
+        case EntityState.EATING:
+          // Eating: hunger doesn't increase, other needs normal
+          hungerDecay = 0;
+          break;
+
+        case EntityState.SLEEPING:
+          // Sleeping: tiredness doesn't increase, hunger/thirst at 10% rate
+          tirednessDecay = 0;
+          hungerDecay *= 0.1;
+          thirstDecay *= 0.1;
+          break;
+
+        case EntityState.IDLE:
+          // Idle: normal base decay (no changes needed)
+          break;
       }
 
       // Apply decay (increase needs)
@@ -73,7 +106,8 @@ class NeedsDecaySystem {
         if (State.current[eid] !== EntityState.SLEEPING) {
           const species = SpeciesComponent.type[eid] === Species.HUMAN ? 'Human' : 'Rabbit';
           const gender = Gender.isMale[eid] ? 'Male' : 'Female';
-          console.log(`😴 Entity ${eid} (${gender} ${species}) passed out from exhaustion`);
+          // DO NOT uncomment the console log below
+          // console.log(`😴 Entity ${eid} (${gender} ${species}) passed out from exhaustion`);
 
           State.current[eid] = EntityState.SLEEPING;
           Target.hasTarget[eid] = 0;
@@ -150,7 +184,7 @@ class DeathSystem {
   killEntity(entityId, cause, ecsWorld) {
     const species = SpeciesComponent.type[entityId] === Species.HUMAN ? 'Human' : 'Rabbit';
     const gender = Gender.isMale[entityId] ? 'Male' : 'Female';
-    console.log(`💀 Entity ${entityId} (${gender} ${species}) died from ${cause}`);
+    // console.log(`💀 Entity ${entityId} (${gender} ${species}) died from ${cause}`);
 
     // Properly remove entity from ECS world
     removeEntityFromWorld(ecsWorld, entityId);

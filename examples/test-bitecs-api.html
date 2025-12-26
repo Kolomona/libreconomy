@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test bitECS API</title>
+</head>
+<body>
+    <h1>Testing bitECS 0.3.38 API</h1>
+    <pre id="output"></pre>
+
+    <script type="module">
+        import * as bitECS from 'https://cdn.jsdelivr.net/npm/bitecs@0.3.38/+esm';
+
+        const output = document.getElementById('output');
+
+        output.textContent = 'bitECS exports:\n';
+        output.textContent += JSON.stringify(Object.keys(bitECS), null, 2);
+
+        console.log('bitECS exports:', bitECS);
+        console.log('removeEntity:', bitECS.removeEntity);
+    </script>
+</body>
+</html>

@@ -6,74 +6,110 @@ class DecisionSystem {
     this.libreconomyStub = libreconomyStub;
     this.worldQuery = worldQuery;
 
-    // How often to make decisions (frames)
-    this.decisionInterval = 30; // Make decisions once per second at 30 FPS
-    this.frameCounter = 0;
+    // Store current intents and their urgency for each entity
+    this.entityIntents = new Map(); // eid -> { intent, initialUrgency }
 
-    // Store current intents for each entity
-    this.entityIntents = new Map(); // eid -> Intent
+    // Interruption threshold: new intent must be this much more urgent
+    this.INTERRUPT_THRESHOLD = 20;  // Urgency points
   }
 
   update(ecsWorld) {
-    this.frameCounter++;
-
-    // Only make new decisions at intervals
-    const shouldDecide = this.frameCounter % this.decisionInterval === 0;
-
     const entities = allEntitiesQuery(ecsWorld);
 
     for (const eid of entities) {
       const currentState = State.current[eid];
 
-      // Get or create intent for this entity
-      let intent = this.entityIntents.get(eid);
+      // Get current intent and urgency
+      const intentData = this.entityIntents.get(eid);
+      const currentIntent = intentData ? intentData.intent : null;
+      const currentUrgency = intentData ? intentData.initialUrgency : 0;
 
-      // Decide on a new action if:
-      // 1. It's time to make decisions (interval)
-      // 2. Entity has no intent
-      // 3. Entity is idle (previous action completed)
-      // 4. Entity's intent is no longer valid
-      const needsNewDecision =
-        shouldDecide ||
-        !intent ||
-        currentState === EntityState.IDLE ||
-        !this.libreconomyStub.validateIntent(intent, eid, ecsWorld, this.worldQuery);
+      // ALWAYS get new decision from libreconomy (every frame)
+      const newIntent = this.libreconomyStub.decide(eid, ecsWorld, this.worldQuery);
 
-      if (needsNewDecision) {
-        // Get decision from libreconomy stub
-        intent = this.libreconomyStub.decide(eid, ecsWorld, this.worldQuery);
-        this.entityIntents.set(eid, intent);
+      // Check if we should interrupt current activity
+      if (this.shouldInterrupt(currentIntent, newIntent, currentState, currentUrgency, eid, ecsWorld)) {
+        // Apply new intent
+        this.applyIntent(eid, newIntent, ecsWorld);
 
-        // Apply the intent to entity components
-        this.applyIntent(eid, intent, ecsWorld);
-      }
+        // Store with urgency
+        this.entityIntents.set(eid, {
+          intent: newIntent,
+          initialUrgency: newIntent.urgency
+        });
+      } else {
+        // Continue current activity - update target if hunting or wandering
+        if (currentIntent && currentIntent.targetEntity !== undefined) {
+          // Hunting: update target to follow moving prey
+          const targetX = Position.x[currentIntent.targetEntity];
+          const targetY = Position.y[currentIntent.targetEntity];
 
-      // Update intent if target entity has moved (for hunting)
-      if (intent && intent.targetEntity !== undefined) {
-        if (!this.libreconomyStub.validateIntent(intent, eid, ecsWorld, this.worldQuery)) {
-          // Target lost, make new decision
-          intent = this.libreconomyStub.decide(eid, ecsWorld, this.worldQuery);
-          this.entityIntents.set(eid, intent);
-          this.applyIntent(eid, intent, ecsWorld);
-        } else {
-          // Update target position
-          const targetX = Position.x[intent.targetEntity];
-          const targetY = Position.y[intent.targetEntity];
-
-          // Validate target entity position
+          // Validate and update target position
           if (!isNaN(targetX) && !isNaN(targetY) && targetX !== undefined && targetY !== undefined) {
-            intent.target = { x: targetX, y: targetY };
+            currentIntent.target = { x: targetX, y: targetY };
             Target.x[eid] = targetX;
             Target.y[eid] = targetY;
-          } else {
-            // Target entity has invalid position, make new decision
-            intent = this.libreconomyStub.decide(eid, ecsWorld, this.worldQuery);
-            this.entityIntents.set(eid, intent);
-            this.applyIntent(eid, intent, ecsWorld);
+          }
+        } else if (currentIntent && currentIntent.type === IntentType.WANDER) {
+          // Wandering: check if reached target, generate new one if so
+          if (Target.hasTarget[eid] === 0) {
+            // No target - entity reached previous wander target
+            // Generate new wander target
+            const wanderTarget = this.getWanderTarget(eid);
+            Target.x[eid] = wanderTarget.x;
+            Target.y[eid] = wanderTarget.y;
+            Target.hasTarget[eid] = 1;
+            State.current[eid] = EntityState.MOVING;
+            currentIntent.target = { x: wanderTarget.x, y: wanderTarget.y };
           }
         }
       }
     }
+  }
+
+  // Determine if new intent should interrupt current activity
+  shouldInterrupt(currentIntent, newIntent, currentState, currentUrgency, entityId, ecsWorld) {
+    // Always allow decisions when IDLE (no current activity)
+    if (currentState === EntityState.IDLE) {
+      return true;
+    }
+
+    // No current intent - allow new one
+    if (!currentIntent) {
+      return true;
+    }
+
+    // Force sleep from exhaustion ALWAYS interrupts
+    const tiredness = Needs.tiredness[entityId];
+    if (tiredness >= 100 && newIntent.type === IntentType.REST) {
+      return true;
+    }
+
+    // SPECIAL: Protect EATING/DRINKING from intent validation interruptions
+    // When consuming, targets become stale but activity should continue
+    const isConsuming = currentState === EntityState.EATING || currentState === EntityState.DRINKING;
+
+    if (!isConsuming) {
+      // Validate current intent - if invalid, interrupt (but NOT during consumption)
+      if (!this.libreconomyStub.validateIntent(currentIntent, entityId, ecsWorld, this.worldQuery)) {
+        return true;
+      }
+    }
+
+    // Compare urgency: only interrupt if significantly more urgent
+    const urgencyDifference = newIntent.urgency - currentUrgency;
+
+    // SPECIAL: Require higher threshold to interrupt consumption
+    const threshold = isConsuming ? 40 : this.INTERRUPT_THRESHOLD;
+
+    // Must exceed threshold to interrupt
+    if (urgencyDifference >= threshold) {
+      // console.log(`Entity ${entityId}: Interrupting ${currentIntent.type} (urgency=${currentUrgency}) for ${newIntent.type} (urgency=${newIntent.urgency}), diff=${urgencyDifference}`);
+      return true;
+    }
+
+    // Not urgent enough - continue current activity
+    return false;
   }
 
   // Apply an intent to entity's components
@@ -137,7 +173,8 @@ class DecisionSystem {
 
   // Get current intent for debugging
   getIntent(entityId) {
-    return this.entityIntents.get(entityId);
+    const intentData = this.entityIntents.get(entityId);
+    return intentData ? intentData.intent : null;
   }
 
   // Clear intent (when entity dies, etc.)

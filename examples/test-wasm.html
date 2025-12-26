@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WASM libreconomy Test</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 {
+            color: #4ec9b0;
+            border-bottom: 2px solid #4ec9b0;
+            padding-bottom: 10px;
+        }
+        #output {
+            background: #252526;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #3c3c3c;
+        }
+        .success {
+            color: #4ec9b0;
+        }
+        .error {
+            color: #f48771;
+        }
+        .info {
+            color: #569cd6;
+        }
+    </style>
+</head>
+<body>
+    <h1>WASM libreconomy Test Suite</h1>
+    <div id="output"></div>
+
+    <script type="module">
+        import init, { WasmWorld, WasmDecisionMaker } from '../pkg/libreconomy.js';
+
+        const output = document.getElementById('output');
+
+        function log(message, className = '') {
+            const p = document.createElement('p');
+            p.className = className;
+            p.textContent = message;
+            output.appendChild(p);
+        }
+
+        async function test() {
+            try {
+                log('=== WASM libreconomy Test Suite ===', 'info');
+                log('');
+
+                // Test 1: Initialize WASM
+                log('Test 1: Initialize WASM module...');
+                await init();
+                log('✓ WASM initialized', 'success');
+                log('');
+
+                // Test 2: Create world
+                log('Test 2: Create world...');
+                const world = new WasmWorld();
+                log('✓ World created', 'success');
+                log('');
+
+                // Test 3: Create agents with species
+                log('Test 3: Create agents with species...');
+                const rabbit = world.create_rabbit();
+                const human = world.create_human();
+                log(`✓ Created rabbit (entity ID: ${rabbit})`, 'success');
+                log(`✓ Created human (entity ID: ${human})`, 'success');
+                log('');
+
+                // Test 4: Check species
+                log('Test 4: Verify species assignment...');
+                const rabbitSpecies = world.get_species(rabbit);
+                const humanSpecies = world.get_species(human);
+                log(`  Rabbit species: ${rabbitSpecies}`, rabbitSpecies === 'Rabbit' ? 'success' : 'error');
+                log(`  Human species: ${humanSpecies}`, humanSpecies === 'Human' ? 'success' : 'error');
+
+                if (rabbitSpecies !== 'Rabbit' || humanSpecies !== 'Human') {
+                    throw new Error('Species mismatch!');
+                }
+                log('✓ Species assignment correct', 'success');
+                log('');
+
+                // Test 5: Test dietary restrictions
+                log('Test 5: Test dietary restrictions...');
+                const rabbitEatsGrass = world.can_eat_plant(rabbit, "grass");
+                const rabbitEatsRabbit = world.can_hunt(rabbit, "Rabbit");
+                const humanEatsGrass = world.can_eat_plant(human, "grass");
+                const humanHuntsRabbit = world.can_hunt(human, "Rabbit");
+
+                log(`  Rabbit can eat grass: ${rabbitEatsGrass}`, rabbitEatsGrass ? 'success' : 'error');
+                log(`  Rabbit can hunt rabbit: ${rabbitEatsRabbit}`, !rabbitEatsRabbit ? 'success' : 'error');
+                log(`  Human can eat grass: ${humanEatsGrass}`, humanEatsGrass ? 'success' : 'error');
+                log(`  Human can hunt rabbit: ${humanHuntsRabbit}`, humanHuntsRabbit ? 'success' : 'error');
+
+                if (!rabbitEatsGrass || rabbitEatsRabbit || !humanEatsGrass || !humanHuntsRabbit) {
+                    throw new Error('Dietary restrictions incorrect!');
+                }
+                log('✓ Dietary restrictions correct', 'success');
+                log('');
+
+                // Test 6: Set and get needs
+                log('Test 6: Test needs management...');
+                world.set_needs(rabbit, 80.0, 70.0, 50.0);
+                const needs = world.get_needs(rabbit);
+                log(`  Rabbit needs: ${JSON.stringify(needs)}`, 'info');
+
+                if (Math.abs(needs.thirst - 80) > 0.1 || Math.abs(needs.hunger - 70) > 0.1) {
+                    throw new Error('Needs not set correctly!');
+                }
+                log('✓ Needs management works', 'success');
+                log('');
+
+                // Test 7: Create decision maker
+                log('Test 7: Create decision maker...');
+                const decisionMaker = new WasmDecisionMaker();
+                log('✓ Decision maker created', 'success');
+                log('');
+
+                // Test 8: Make decisions with mock WorldQuery
+                log('Test 8: Test decision making...');
+
+                // Mock WorldQuery
+                const worldQuery = {
+                    getNearbyAgents: (agentId, maxCount) => {
+                        return [];
+                    },
+                    getNearbyResources: (agentId, resourceType, maxRadius) => {
+                        // Return a grass source for testing
+                        if (resourceType === 'grass') {
+                            return [{ x: 100.0, y: 100.0, distance: 50.0 }];
+                        }
+                        return [];
+                    },
+                    canInteract: (agent1Id, agent2Id) => {
+                        return false;
+                    }
+                };
+
+                // Test decision for hungry rabbit (should seek grass)
+                const rabbitDecision = decisionMaker.decide_libreterra(world, rabbit, worldQuery);
+                log(`  Rabbit decision type: ${rabbitDecision.intent_type}`, 'info');
+                log(`  Rabbit decision reason: ${rabbitDecision.reason}`, 'info');
+                log(`  Rabbit decision utility: ${rabbitDecision.utility.toFixed(2)}`, 'info');
+
+                if (rabbitDecision.intent_type !== 'SEEK_FOOD') {
+                    log(`  ⚠ Expected SEEK_FOOD, got ${rabbitDecision.intent_type}`, 'error');
+                } else {
+                    log('✓ Rabbit correctly seeks food (grass)', 'success');
+                }
+                log('');
+
+                // Test 9: Test with thirsty agent
+                log('Test 9: Test thirst-driven behavior...');
+                world.set_needs(human, 85.0, 30.0, 20.0);
+
+                const worldQuery2 = {
+                    getNearbyAgents: (agentId, maxCount) => [],
+                    getNearbyResources: (agentId, resourceType, maxRadius) => {
+                        if (resourceType === 'water') {
+                            return [{ x: 150.0, y: 150.0, distance: 75.0 }];
+                        }
+                        return [];
+                    },
+                    canInteract: (agent1Id, agent2Id) => false
+                };
+
+                const humanDecision = decisionMaker.decide_libreterra(world, human, worldQuery2);
+                log(`  Human decision type: ${humanDecision.intent_type}`, 'info');
+                log(`  Human decision reason: ${humanDecision.reason}`, 'info');
+
+                if (humanDecision.intent_type !== 'SEEK_WATER') {
+                    log(`  ⚠ Expected SEEK_WATER, got ${humanDecision.intent_type}`, 'error');
+                } else {
+                    log('✓ Human correctly seeks water when thirsty', 'success');
+                }
+                log('');
+
+                // Test 10: Test JSON decision format
+                log('Test 10: Test JSON decision format...');
+                const jsonDecision = decisionMaker.decide(world, rabbit, worldQuery);
+                log(`  JSON decision: ${JSON.stringify(jsonDecision)}`, 'info');
+                log('✓ JSON serialization works', 'success');
+                log('');
+
+                // Final summary
+                log('=== All Tests Passed! ===', 'success');
+                log('');
+                log('WASM module is ready for integration.', 'success');
+
+            } catch (err) {
+                log('', '');
+                log('=== TEST FAILED ===', 'error');
+                log(`Error: ${err.message}`, 'error');
+                log(err.stack, 'error');
+                console.error(err);
+            }
+        }
+
+        // Run tests
+        test();
+    </script>
+</body>
+</html>

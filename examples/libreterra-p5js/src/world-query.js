@@ -8,11 +8,40 @@ class WorldQuery {
     this.spatialHash = spatialHash;
   }
 
+  // Calculate terrain-weighted path cost between two points
+  // Samples terrain along straight line and weights by energy multiplier
+  calculatePathCost(x1, y1, x2, y2, species) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Sample terrain along path (5-10 samples)
+    const samples = Math.max(5, Math.floor(distance / 20));
+    let totalCost = 0;
+
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples;
+      const sampleX = Math.floor(x1 + dx * t);
+      const sampleY = Math.floor(y1 + dy * t);
+
+      const terrain = this.terrainGrid.get(sampleX, sampleY);
+      const attributes = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][terrain];
+
+      // Use energy multiplier as terrain difficulty
+      totalCost += attributes.energyMultiplier;
+    }
+
+    // Average cost along path × distance
+    const avgCost = totalCost / (samples + 1);
+    return distance * avgCost;
+  }
+
   // Find nearby resources of a specific type (water, grass)
-  // Returns array of {x, y, distance} sorted by distance
+  // Returns array of {x, y, distance, cost} sorted by cost
   getNearbyResources(entityId, resourceType, maxRadius = 500, sampleStep = 10) {
     const posX = Position.x[entityId];
     const posY = Position.y[entityId];
+    const species = SpeciesComponent.type[entityId];
 
     const resources = [];
 
@@ -49,7 +78,10 @@ class WorldQuery {
           const dy = y - posY;
           const distance = Math.sqrt(dx * dx + dy * dy);
 
-          resources.push({ x, y, distance });
+          // Calculate terrain-weighted cost
+          const cost = this.calculatePathCost(posX, posY, x, y, species);
+
+          resources.push({ x, y, distance, cost });
 
           // Return early if we found something close
           if (resources.length >= 5) {
@@ -64,8 +96,8 @@ class WorldQuery {
       }
     }
 
-    // Sort by distance
-    resources.sort((a, b) => a.distance - b.distance);
+    // Sort by COST (terrain-weighted) instead of distance
+    resources.sort((a, b) => a.cost - b.cost);
 
     return resources;
   }
