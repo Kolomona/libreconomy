@@ -32,8 +32,17 @@ let frameCounter = 0;
 let fpsDisplay = 0;
 let selectedEntity = null;
 
-// p5.js setup function
-function setup() {
+// New: Terrain persistence and UI
+let terrainStorage;
+let loadingOverlay;
+let setupComplete = false;
+
+// Selection history for entity cycling
+let selectionHistory = [];
+let lastHistoryCleanFrame = 0;
+
+// p5.js setup function (async for terrain loading)
+async function setup() {
   try {
     window.setupCalled = true;
     console.log('✓ setup() called');
@@ -45,13 +54,59 @@ function setup() {
     // Initialize camera
     camera = new CameraSystem();
 
-  // Initialize terrain
-  console.log('Initializing terrain...');
-  terrainGrid = new TerrainGrid(CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
-  terrainGenerator = new TerrainGenerator(42); // Fixed seed for consistency
-  terrainGenerator.generate(terrainGrid);
+    // Initialize loading overlay
+    loadingOverlay = new LoadingOverlay();
+    loadingOverlay.show("Initializing IndexedDB...");
+
+    // Force initial render of loading overlay
+    background(20);
+    loadingOverlay.render(window);
+
+    // Initialize terrain storage
+    terrainStorage = new TerrainStorage();
+    await terrainStorage.init();
+    console.log('✓ IndexedDB initialized');
+
+    // Try to load cached terrain
+    loadingOverlay.show("Checking for cached terrain...");
+    background(20);
+    loadingOverlay.render(window);
+
+    const cachedTerrain = await terrainStorage.loadTerrain();
+
+    if (cachedTerrain) {
+      // Load from cache
+      loadingOverlay.show("Loading terrain from cache...");
+      background(20);
+      loadingOverlay.render(window);
+
+      terrainGrid = new TerrainGrid(cachedTerrain.width, cachedTerrain.height);
+      terrainGrid.data = cachedTerrain.data;  // Direct assignment of Uint8Array
+      terrainGenerator = new TerrainGenerator(cachedTerrain.seed);
+      console.log(`✓ Loaded terrain from cache (seed: ${cachedTerrain.seed})`);
+    } else {
+      // Generate new terrain
+      console.log('No cached terrain found, generating new terrain...');
+      terrainGrid = new TerrainGrid(CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
+      terrainGenerator = new TerrainGenerator();  // Random seed
+
+      // Generate with progress tracking
+      await generateTerrainWithProgress(terrainGrid, terrainGenerator);
+
+      // Save to cache
+      loadingOverlay.show("Saving terrain to cache...");
+      background(20);
+      loadingOverlay.render(window);
+
+      await terrainStorage.saveTerrain(terrainGrid, terrainGenerator.seed);
+      console.log(`✓ Generated and cached terrain (seed: ${terrainGenerator.seed})`);
+    }
 
   // Initialize systems
+  loadingOverlay.show("Initializing systems...");
+  background(20);
+  loadingOverlay.render(window);
+
   terrainSystem = new TerrainSystem(terrainGrid);
   renderSystem = new RenderSystem(terrainGrid);
 
@@ -86,6 +141,10 @@ function setup() {
   // Set frame rate
   frameRate(CONFIG.SIMULATION.TARGET_FPS);
 
+    // Hide loading overlay
+    loadingOverlay.hide();
+    setupComplete = true;
+
     console.log('libreterra initialized successfully!');
     console.log(`World size: ${CONFIG.WORLD_WIDTH}x${CONFIG.WORLD_HEIGHT}`);
     console.log(`Camera: (${Math.round(camera.x)}, ${Math.round(camera.y)}) @ ${camera.zoom}x`);
@@ -100,9 +159,58 @@ function setup() {
   }
 }
 
+// Helper: Generate terrain with progress tracking
+async function generateTerrainWithProgress(terrainGrid, terrainGenerator) {
+  return new Promise((resolve) => {
+    const chunkSize = 1000;  // Process 1000 rows at a time
+    const generator = terrainGenerator.generateChunked(terrainGrid, chunkSize);
+
+    function processChunk() {
+      const result = generator.next();
+
+      if (!result.done) {
+        const progress = parseFloat(result.value.progress);  // 0-100
+
+        // Update loading overlay
+        loadingOverlay.show(`Generating terrain... ${Math.round(progress)}%`, progress);
+        background(20);
+        loadingOverlay.render(window);
+
+        setTimeout(processChunk, 0);  // Yield to browser
+      } else {
+        resolve();
+      }
+    }
+
+    processChunk();
+  });
+}
+
+// Helper: Show loading overlay
+function showLoadingOverlay(message, progress = -1) {
+  if (loadingOverlay) {
+    loadingOverlay.show(message, progress);
+  }
+}
+
+// Helper: Hide loading overlay
+function hideLoadingOverlay() {
+  if (loadingOverlay) {
+    loadingOverlay.hide();
+  }
+}
+
 // p5.js draw function (main game loop)
 function draw() {
   background(20);
+
+  // If setup is not complete, just show loading overlay
+  if (!setupComplete) {
+    if (loadingOverlay) {
+      loadingOverlay.render(window);
+    }
+    return;
+  }
 
   // Update FPS counter
   if (frameCounter % 30 === 0) {
@@ -144,12 +252,46 @@ function draw() {
   camera.updateUI();
   updateEntityCountUI();
   updateEntityInfoUI();
+
+  // Clean selection history periodically (every 300 frames = 5 seconds at 60 FPS)
+  if (frameCounter - lastHistoryCleanFrame > 300) {
+    cleanSelectionHistory();
+    lastHistoryCleanFrame = frameCounter;
+  }
+
+  // Render loading overlay (if visible)
+  if (loadingOverlay) {
+    loadingOverlay.render(window);
+  }
 }
 
-// Update entity count in UI
+// Update entity count in UI (with gender breakdown)
 function updateEntityCountUI() {
-  const count = getEntityCount(ecsWorld);
-  document.getElementById('entity-count').textContent = count;
+  const allEntities = allEntitiesQuery(ecsWorld);
+
+  let maleHumans = 0, femaleHumans = 0;
+  let maleRabbits = 0, femaleRabbits = 0;
+
+  for (const eid of allEntities) {
+    const isMale = Gender.isMale[eid] === 1;
+    const species = SpeciesComponent.type[eid];
+
+    if (species === Species.HUMAN) {
+      isMale ? maleHumans++ : femaleHumans++;
+    } else if (species === Species.RABBIT) {
+      isMale ? maleRabbits++ : femaleRabbits++;
+    }
+  }
+
+  // Calculate totals
+  const totalHumans = maleHumans + femaleHumans;
+  const totalRabbits = maleRabbits + femaleRabbits;
+  const totalEntities = totalHumans + totalRabbits;
+
+  // Update HTML
+  document.getElementById('total-count').textContent = totalEntities;
+  document.getElementById('humans-count').textContent = `M:${maleHumans} F:${femaleHumans} T:${totalHumans}`;
+  document.getElementById('rabbits-count').textContent = `M:${maleRabbits} F:${femaleRabbits} T:${totalRabbits}`;
 }
 
 // Update entity info UI
@@ -277,6 +419,27 @@ function findEntityAtPosition(screenX, screenY) {
   return closestEntity;
 }
 
+// Clean dead entities from selection history
+function cleanSelectionHistory() {
+  const allEntities = allEntitiesQuery(ecsWorld);
+  const aliveSet = new Set(allEntities);
+
+  // Filter out dead entities
+  const before = selectionHistory.length;
+  selectionHistory = selectionHistory.filter(eid => aliveSet.has(eid));
+
+  const removed = before - selectionHistory.length;
+  if (removed > 0) {
+    console.log(`Removed ${removed} dead entities from selection history`);
+  }
+
+  // If current selection is dead, clear it
+  if (selectedEntity !== null && !aliveSet.has(selectedEntity)) {
+    selectedEntity = null;
+    camera.stopFollowing();
+  }
+}
+
 // Update all ECS systems
 function updateSystems() {
   // Phase 5: Update needs decay system (includes pass out logic)
@@ -310,7 +473,13 @@ function mousePressed() {
     // Start camera following
     camera.startFollowing(clickedEntity);
 
-    console.log(`Selected entity ${clickedEntity}`);
+    // Add to selection history if not already present
+    if (!selectionHistory.includes(clickedEntity)) {
+      selectionHistory.push(clickedEntity);
+      console.log(`Selected entity ${clickedEntity} (added to history, ${selectionHistory.length} total)`);
+    } else {
+      console.log(`Selected entity ${clickedEntity} (already in history)`);
+    }
   } else {
     // Deselect if clicking empty space
     if (selectedEntity !== null) {
@@ -506,6 +675,84 @@ function keyPressed() {
     selectedEntity = null;
 
     console.log(`💀💀💀 MASS EXTINCTION: Killed all ${totalKilled} entities (Shift+K)`);
+  }
+
+  // N: Cycle to next entity in selection history
+  if ((key === 'n' || key === 'N') && !event.shiftKey) {
+    cleanSelectionHistory();  // Ensure history is up-to-date
+
+    if (selectionHistory.length === 0) {
+      console.log('No entities in selection history. Click entities to add them.');
+      return;
+    }
+
+    // Find current index in history
+    let currentIndex = selectionHistory.indexOf(selectedEntity);
+
+    // If not found or no selection, start at beginning
+    if (currentIndex === -1) {
+      currentIndex = -1;  // Will wrap to 0
+    }
+
+    // Next index (with wraparound)
+    const nextIndex = (currentIndex + 1) % selectionHistory.length;
+    selectedEntity = selectionHistory[nextIndex];
+
+    // Center camera on selected entity
+    const x = Position.x[selectedEntity];
+    const y = Position.y[selectedEntity];
+    camera.centerOn(x, y);
+    camera.startFollowing(selectedEntity);
+
+    console.log(`Cycled to entity ${selectedEntity} (${nextIndex + 1}/${selectionHistory.length})`);
+  }
+
+  // Shift+N: Cycle to previous entity in selection history
+  if ((key === 'n' || key === 'N') && event.shiftKey) {
+    cleanSelectionHistory();  // Ensure history is up-to-date
+
+    if (selectionHistory.length === 0) {
+      console.log('No entities in selection history. Click entities to add them.');
+      return;
+    }
+
+    // Find current index in history
+    let currentIndex = selectionHistory.indexOf(selectedEntity);
+
+    // If not found or no selection, start at end
+    if (currentIndex === -1) {
+      currentIndex = 0;  // Will wrap to end
+    }
+
+    // Previous index (with wraparound)
+    const prevIndex = (currentIndex - 1 + selectionHistory.length) % selectionHistory.length;
+    selectedEntity = selectionHistory[prevIndex];
+
+    // Center camera on selected entity
+    const x = Position.x[selectedEntity];
+    const y = Position.y[selectedEntity];
+    camera.centerOn(x, y);
+    camera.startFollowing(selectedEntity);
+
+    console.log(`Cycled to entity ${selectedEntity} (${prevIndex + 1}/${selectionHistory.length})`);
+  }
+
+  // Shift+Delete: Clear terrain storage
+  if (keyCode === DELETE && event.shiftKey) {
+    if (!terrainStorage) {
+      console.warn('Terrain storage not initialized');
+      return;
+    }
+
+    terrainStorage.clearTerrain()
+      .then(() => {
+        console.log('✓ Terrain storage cleared. Refresh page to regenerate terrain.');
+        alert('Terrain storage cleared!\n\nRefresh the page (F5) to regenerate a new random terrain.');
+      })
+      .catch(err => {
+        console.error('Failed to clear terrain storage:', err);
+        alert('Error clearing terrain storage. Check console.');
+      });
   }
 }
 

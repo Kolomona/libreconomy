@@ -122,7 +122,9 @@
 
     <div id="ui-overlay">
         <div class="stat-line">FPS: <span id="fps">0</span></div>
-        <div class="stat-line">Entities: <span id="entity-count">0</span></div>
+        <div class="stat-line">Total: <span id="total-count">0</span></div>
+        <div class="stat-line">Humans: <span id="humans-count">M:0 F:0 T:0</span></div>
+        <div class="stat-line">Rabbits: <span id="rabbits-count">M:0 F:0 T:0</span></div>
         <div class="stat-line">Camera: (<span id="cam-x">0</span>, <span id="cam-y">0</span>) @ <span id="cam-zoom">1.0</span>x</div>
     </div>
 
@@ -204,8 +206,10 @@
         function loadApplicationScripts() {
             const scripts = [
                 'src/config.js',
+                'src/ui/loading-overlay.js',
                 'src/terrain/grid.js',
                 'src/terrain/generator.js',
+                'src/terrain/storage.js',
                 'src/ecs/components.js',
                 'src/ecs/world.js',
                 'src/ecs/systems/camera.js',
