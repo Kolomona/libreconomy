@@ -9,8 +9,25 @@ function createECSWorld() {
   return world;
 }
 
+// Calculate expected lifespan in frames for a species
+// Time scale: 100 simulation years = 120 minutes real-time
+// At 60 FPS: 1 simulation year = 4,320 frames (72 seconds)
+function calculateLifespanFrames(species) {
+  const FRAMES_PER_SIM_YEAR = 4_320;  // 100 years = 120 minutes at 60 FPS
+
+  if (species === Species.HUMAN) {
+    // 70 years base lifespan (84 minutes real-time)
+    return 70 * FRAMES_PER_SIM_YEAR;  // 302,400 frames
+  } else if (species === Species.RABBIT) {
+    // 2 years base lifespan (2.4 minutes real-time)
+    return 2 * FRAMES_PER_SIM_YEAR;   // 8,640 frames
+  }
+
+  return FRAMES_PER_SIM_YEAR;  // Default: 1 year
+}
+
 // Create a human entity
-function createHuman(world, x, y, isMale) {
+function createHuman(world, x, y, isMale, currentFrame = 0) {
   const eid = addEntity(world);
 
   // Add Position
@@ -42,6 +59,12 @@ function createHuman(world, x, y, isMale) {
   Energy.current[eid] = 100;
   Energy.max[eid] = 100;
 
+  // Add Age
+  addComponent(world, Age, eid);
+  Age.birthFrame[eid] = currentFrame;
+  Age.expectedLifespanFrames[eid] = calculateLifespanFrames(Species.HUMAN);
+  Age.energyHistory[eid] = 100;  // Start healthy
+
   // Add Target
   addComponent(world, Target, eid);
   Target.x[eid] = 0;
@@ -56,7 +79,7 @@ function createHuman(world, x, y, isMale) {
 }
 
 // Create a rabbit entity
-function createRabbit(world, x, y, isMale) {
+function createRabbit(world, x, y, isMale, currentFrame = 0) {
   const eid = addEntity(world);
 
   // Add Position
@@ -88,6 +111,12 @@ function createRabbit(world, x, y, isMale) {
   Energy.current[eid] = 80;
   Energy.max[eid] = 80;
 
+  // Add Age
+  addComponent(world, Age, eid);
+  Age.birthFrame[eid] = currentFrame;
+  Age.expectedLifespanFrames[eid] = calculateLifespanFrames(Species.RABBIT);
+  Age.energyHistory[eid] = 80;  // Start healthy
+
   // Add Target
   addComponent(world, Target, eid);
   Target.x[eid] = 0;
@@ -102,7 +131,7 @@ function createRabbit(world, x, y, isMale) {
 }
 
 // Spawn initial entities randomly on the map
-function spawnInitialEntities(world, terrainGrid) {
+function spawnInitialEntities(world, terrainGrid, currentFrame = 0) {
   console.log('Spawning initial entities...');
 
   const entities = {
@@ -124,7 +153,7 @@ function spawnInitialEntities(world, terrainGrid) {
 
     if (attempts < 100) {
       const isMale = Math.random() > 0.5;
-      const eid = createHuman(world, x, y, isMale);
+      const eid = createHuman(world, x, y, isMale, currentFrame);
       entities.humans.push(eid);
     }
   }
@@ -143,7 +172,7 @@ function spawnInitialEntities(world, terrainGrid) {
 
     if (attempts < 100) {
       const isMale = Math.random() > 0.5;
-      const eid = createRabbit(world, x, y, isMale);
+      const eid = createRabbit(world, x, y, isMale, currentFrame);
       entities.rabbits.push(eid);
     }
   }

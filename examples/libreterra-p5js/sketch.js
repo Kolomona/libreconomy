@@ -21,6 +21,7 @@ let spatialHash;
 let worldQuery;
 let libreconomyStub;
 let needsDecaySystem;
+let ageSystem;
 let decisionSystem;
 let movementSystem;
 let consumptionSystem;
@@ -59,7 +60,7 @@ function setup() {
   ecsWorld = createECSWorld();
 
   // Spawn initial entities
-  const spawnedEntities = spawnInitialEntities(ecsWorld, terrainGrid);
+  const spawnedEntities = spawnInitialEntities(ecsWorld, terrainGrid, frameCounter);
   console.log(`Total entities in world: ${allEntitiesQuery(ecsWorld).length}`);
 
   // Initialize spatial hash and world query (Phase 4)
@@ -72,6 +73,7 @@ function setup() {
   libreconomyStub.initialize(WasmWorld, WasmDecisionMaker);
   console.log('✓ WASM bridge initialized');
   needsDecaySystem = new NeedsDecaySystem(terrainGrid);
+  ageSystem = new AgeSystem();
   decisionSystem = new DecisionSystem(libreconomyStub, worldQuery);
 
   // Initialize movement and consumption systems (Phase 6)
@@ -79,7 +81,7 @@ function setup() {
   consumptionSystem = new ConsumptionSystem(terrainGrid, decisionSystem);
 
   // Initialize death system
-  deathSystem = new DeathSystem();
+  deathSystem = new DeathSystem(terrainGrid);
 
   // Set frame rate
   frameRate(CONFIG.SIMULATION.TARGET_FPS);
@@ -184,6 +186,17 @@ function updateEntityInfoUI() {
   const energy = Energy.current[selectedEntity];
   const maxEnergy = Energy.max[selectedEntity];
 
+  // Get terrain type at entity position
+  const terrainType = terrainGrid.get(Math.floor(x), Math.floor(y));
+  const terrainNames = ['Water', 'Grass', 'Rocky', 'Dirt'];
+  const terrainName = terrainNames[terrainType] || 'Unknown';
+
+  // Calculate age in real-world months
+  const birthFrame = Age.birthFrame[selectedEntity];
+  const currentAge = frameCounter - birthFrame;
+  const FRAMES_PER_SIM_MONTH = 360;  // 100 sim years = 432,000 frames at 60 FPS, so 1 month = 360 frames
+  const ageInMonths = currentAge / FRAMES_PER_SIM_MONTH;
+
   // Get species and gender names
   const speciesName = species === Species.HUMAN ? 'Human' : 'Rabbit';
   const genderName = isMale ? 'Male' : 'Female';
@@ -200,10 +213,12 @@ function updateEntityInfoUI() {
   let html = `
     <div class="stat-line"><strong>ID:</strong> ${selectedEntity}</div>
     <div class="stat-line"><strong>Type:</strong> ${genderName} ${speciesName}</div>
+    <div class="stat-line"><strong>Age:</strong> ${ageInMonths.toFixed(1)} months</div>
     <div class="stat-line"><strong>Position:</strong> (${Math.round(x)}, ${Math.round(y)})</div>
+    <div class="stat-line"><strong>Terrain:</strong> ${terrainName}</div>
     <div class="stat-line"><strong>State:</strong> ${stateName}</div>
     <div class="stat-line"><strong>Intent:</strong> ${intentName}</div>
-    <div class="stat-line"><strong>Energy:</strong> ${Math.round(energy)}/${maxEnergy}</div>
+    <div class="stat-line"><strong>Energy:</strong> ${Math.round(energy)}/${Math.round(maxEnergy)}</div>
     <div style="margin-top: 10px; margin-bottom: 5px;"><strong>Needs:</strong></div>
   `;
 
@@ -266,6 +281,9 @@ function findEntityAtPosition(screenX, screenY) {
 function updateSystems() {
   // Phase 5: Update needs decay system (includes pass out logic)
   needsDecaySystem.update(ecsWorld, timeScale);
+
+  // Update age system (adjusts max energy based on age)
+  ageSystem.update(ecsWorld, frameCounter);
 
   // Phase 5: Update decision system
   decisionSystem.update(ecsWorld);

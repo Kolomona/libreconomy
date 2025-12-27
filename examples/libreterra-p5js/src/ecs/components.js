@@ -44,6 +44,13 @@ const Energy = defineComponent({
   max: Types.f32
 });
 
+// Age component (birth time and lifespan)
+const Age = defineComponent({
+  birthFrame: Types.ui32,           // Frame when entity was created
+  expectedLifespanFrames: Types.ui32, // Expected total lifespan in frames
+  energyHistory: Types.f32          // Rolling average of recent energy (for health tracking)
+});
+
 // Target component (destination for movement)
 const Target = defineComponent({
   x: Types.f32,

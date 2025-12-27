@@ -74,6 +74,13 @@ class ConsumptionSystem {
     const y = Math.floor(Position.y[entityId]);
     const terrain = this.terrainGrid.get(x, y);
 
+    // Water restriction: Can't eat while in water (land creatures only)
+    const isInWater = (terrain === TerrainType.WATER);
+    if (isInWater && intent.type === IntentType.SEEK_FOOD) {
+      // Can't eat in water - stay IDLE (entity will need to move out of water)
+      return;
+    }
+
     // Check if entity is on the terrain type it was seeking
     if (intent.type === IntentType.SEEK_WATER && terrain === TerrainType.WATER) {
       this.consumeWater(entityId);

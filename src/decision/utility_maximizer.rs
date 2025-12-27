@@ -4,7 +4,7 @@
 // actions and selects the one with the highest utility score. It's based on
 // the JavaScript stub from libreterra but implemented in pure Rust.
 
-use crate::{Agent, AgentId, Needs, SpeciesComponent, DietType};
+use crate::{Agent, AgentId, Needs, SpeciesComponent, DietType, EnergyComponent};
 use crate::decision::{DecisionOutput, Intent};
 use crate::world_query::WorldQuery;
 use specs::prelude::*;
@@ -171,6 +171,15 @@ impl UtilityMaximizer {
             .get(agent)
             .expect("Agent must have Needs component");
 
+        // Read energy component
+        let energy_storage = world.read_storage::<EnergyComponent>();
+        let default_energy = EnergyComponent::new(100.0, 100.0);
+        let energy = energy_storage
+            .get(agent)
+            .unwrap_or(&default_energy);
+
+        let energy_percent = (energy.current / energy.max) * 100.0;
+
         // Get agent ID for spatial queries
         let agent_storage = world.read_storage::<Agent>();
         let agent_component = agent_storage
@@ -222,19 +231,41 @@ impl UtilityMaximizer {
             }
         }
 
-        // Evaluate REST
-        if needs.tiredness > self.thresholds.high_tiredness {
-            let urgency = needs.tiredness / 100.0;
+        // Evaluate REST (triggered by tiredness OR low energy)
+        if needs.tiredness > self.thresholds.high_tiredness || energy_percent < 30.0 {
+            let rest_urgency = if energy_percent < 30.0 {
+                // Energy-based urgency (0-30% maps to 70-100 urgency)
+                70.0 + ((30.0 - energy_percent) / 30.0) * 30.0
+            } else {
+                needs.tiredness  // Tiredness-based urgency
+            };
+
+            // Take the maximum urgency (most critical need)
+            let urgency = rest_urgency.max(needs.tiredness) / 100.0;
             let utility = urgency * self.weights.comfort;
-            utilities.push((
-                Intent::Rest,
-                utility,
-                format!("Tiredness: {:.0}", needs.tiredness),
-            ));
+
+            let reason = if energy_percent < 30.0 {
+                format!("Low energy: {:.0}% (Tiredness: {:.0})", energy_percent, needs.tiredness)
+            } else {
+                format!("Tiredness: {:.0}", needs.tiredness)
+            };
+
+            utilities.push((Intent::Rest, utility, reason));
         }
 
         // Always include WANDER as fallback
         utilities.push((Intent::Wander, 0.1, "Exploring".to_string()));
+
+        // Apply energy penalty to non-REST actions when low energy
+        if energy_percent < 30.0 {
+            for (intent, utility, _reason) in &mut utilities {
+                // Don't penalize REST intent
+                if !matches!(intent, Intent::Rest) {
+                    let energy_penalty = energy_percent / 30.0;  // 0-30% maps to 0.0-1.0
+                    *utility *= energy_penalty;  // Reduce urgency
+                }
+            }
+        }
 
         // Sort by utility (highest first)
         utilities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));

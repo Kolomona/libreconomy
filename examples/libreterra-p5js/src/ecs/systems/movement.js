@@ -92,6 +92,21 @@ class MovementSystem {
       const terrainAttributes = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][terrain];
       speed *= terrainAttributes.speedMultiplier;
 
+      // Apply energy-based speed penalty
+      const energyPercent = Energy.current[eid] / Energy.max[eid];
+      let energySpeedMultiplier = 1.0;
+
+      if (energyPercent < 0.20) {
+        // Critical energy: 70% speed (reduced from 50%)
+        energySpeedMultiplier = 0.7;
+      } else if (energyPercent < 0.50) {
+        // Low energy: linear scale from 70% to 100%
+        energySpeedMultiplier = 0.7 + ((energyPercent - 0.20) / 0.30) * 0.3;
+      }
+      // Normal energy (>50%): full speed (no penalty)
+
+      speed *= energySpeedMultiplier;
+
       // Apply speed modifier based on delta time
       speed *= deltaTime;
 
@@ -135,32 +150,36 @@ class MovementSystem {
         Position.x[eid] = newX;
         Position.y[eid] = newY;
       } else {
-        // Terrain is impassable for this species, try sliding along it
-        const slideX = Position.x[eid] + Velocity.vx[eid];
-        const slideY = Position.y[eid];
-        const slideTerrainX = this.terrainGrid.get(Math.floor(slideX), Math.floor(slideY));
-        const slideAttributesX = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][slideTerrainX];
+        // Terrain is impassable - try sliding in 8 directions
+        const slideDirections = [
+          { x: Velocity.vx[eid], y: 0 },                                    // X-axis only
+          { x: 0, y: Velocity.vy[eid] },                                    // Y-axis only
+          { x: Velocity.vx[eid] * 0.7, y: Velocity.vy[eid] * 0.7 },       // Diagonal
+          { x: -Velocity.vx[eid] * 0.5, y: 0 },                           // Backward X
+          { x: 0, y: -Velocity.vy[eid] * 0.5 },                           // Backward Y
+        ];
 
-        if (slideAttributesX.speedMultiplier > 0) {
-          Position.x[eid] = slideX;
-          Position.y[eid] = slideY;
-        } else {
-          // Try sliding vertically
-          const slideX2 = Position.x[eid];
-          const slideY2 = Position.y[eid] + Velocity.vy[eid];
-          const slideTerrainY = this.terrainGrid.get(Math.floor(slideX2), Math.floor(slideY2));
-          const slideAttributesY = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][slideTerrainY];
+        let moved = false;
+        for (const slide of slideDirections) {
+          const slideX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH - 1, Position.x[eid] + slide.x));
+          const slideY = Math.max(0, Math.min(CONFIG.WORLD_HEIGHT - 1, Position.y[eid] + slide.y));
+          const slideTerrain = this.terrainGrid.get(Math.floor(slideX), Math.floor(slideY));
+          const slideAttributes = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][slideTerrain];
 
-          if (slideAttributesY.speedMultiplier > 0) {
-            Position.x[eid] = slideX2;
-            Position.y[eid] = slideY2;
-          } else {
-            // Completely blocked, stop and re-decide
-            Velocity.vx[eid] = 0;
-            Velocity.vy[eid] = 0;
-            Target.hasTarget[eid] = 0;
-            State.current[eid] = EntityState.IDLE;
+          if (slideAttributes.speedMultiplier > 0) {
+            Position.x[eid] = slideX;
+            Position.y[eid] = slideY;
+            moved = true;
+            break;
           }
+        }
+
+        if (!moved) {
+          // Completely blocked - stop moving
+          Velocity.vx[eid] = 0;
+          Velocity.vy[eid] = 0;
+          Target.hasTarget[eid] = 0;
+          State.current[eid] = EntityState.IDLE;
         }
       }
     }

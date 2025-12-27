@@ -10,7 +10,7 @@ use crate::{
     Agent, Needs, Inventory, Wallet, ResourceSource, SpeciesComponent, Species,
     AgentIdAllocator, create_agent, create_agent_with_needs,
     create_agent_with_wallet, create_agent_custom, remove_agent,
-    ItemRegistry, NeedType,
+    ItemRegistry, NeedType, EnergyComponent,
 };
 
 /// WASM wrapper for the ECS World
@@ -43,6 +43,7 @@ impl WasmWorld {
         // Register all components
         world.register::<Agent>();
         world.register::<Needs>();
+        world.register::<EnergyComponent>();
         world.register::<Inventory>();
         world.register::<Wallet>();
         world.register::<ResourceSource>();
@@ -140,6 +141,37 @@ impl WasmWorld {
                 true
             }
             None => false,
+        }
+    }
+
+    /// Get agent energy as JSON
+    /// Returns null if entity doesn't exist
+    pub fn get_energy(&self, entity_id: u32) -> JsValue {
+        let entity = self.world.entities().entity(entity_id);
+        let energy_storage = self.world.read_storage::<EnergyComponent>();
+
+        match energy_storage.get(entity) {
+            Some(energy) => serde_wasm_bindgen::to_value(energy).unwrap_or(JsValue::NULL),
+            None => JsValue::NULL,
+        }
+    }
+
+    /// Set agent energy
+    /// Returns true on success, false if entity doesn't exist
+    pub fn set_energy(&mut self, entity_id: u32, current: f32, max: f32) -> bool {
+        let entity = self.world.entities().entity(entity_id);
+        let mut energy_storage = self.world.write_storage::<EnergyComponent>();
+
+        match energy_storage.get_mut(entity) {
+            Some(energy) => {
+                *energy = EnergyComponent::new(current, max);
+                true
+            }
+            None => {
+                // If entity doesn't have energy component, add it
+                energy_storage.insert(entity, EnergyComponent::new(current, max)).ok();
+                true
+            }
         }
     }
 

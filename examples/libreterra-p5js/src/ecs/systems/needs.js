@@ -12,6 +12,7 @@ class NeedsDecaySystem {
       hunger: 0.02,      // Takes ~83 seconds to go from 0 to 50 (hungry threshold)
       thirst: 0.025,     // Slightly faster than hunger
       tiredness: 0.015,  // Slower than hunger/thirst
+      energy: 0.005,     // Energy decay rate (reduced from 0.01 to prevent death spiral)
 
       // Activity multipliers (applied when entity is moving/active)
       activityMultiplier: {
@@ -20,16 +21,27 @@ class NeedsDecaySystem {
         tiredness: 2.5   // Moving makes you tired faster
       },
 
+      // State-specific energy multipliers
+      energyStateMultiplier: {
+        [EntityState.IDLE]: 0.5,      // Idle conserves energy
+        [EntityState.MOVING]: 1.2,    // Moving drains energy (reduced from 2.0 to 1.2)
+        [EntityState.EATING]: 0.3,    // Eating restores slightly
+        [EntityState.DRINKING]: 0.3,  // Drinking restores slightly
+        [EntityState.SLEEPING]: -2.5  // Sleeping RESTORES energy (increased from -1.0 to -2.5)
+      },
+
       // Species-specific multipliers
       rabbit: {
         hunger: 1.3,     // Rabbits get hungry faster
         thirst: 1.2,     // Rabbits get thirsty faster
-        tiredness: 1.0
+        tiredness: 1.0,
+        energy: 1.0
       },
       human: {
         hunger: 1.0,
         thirst: 1.0,
-        tiredness: 1.0
+        tiredness: 1.0,
+        energy: 1.0
       }
     };
 
@@ -53,6 +65,7 @@ class NeedsDecaySystem {
       let hungerDecay = this.decayRates.hunger * speciesMultiplier.hunger * deltaTime;
       let thirstDecay = this.decayRates.thirst * speciesMultiplier.thirst * deltaTime;
       let tirednessDecay = this.decayRates.tiredness * speciesMultiplier.tiredness * deltaTime;
+      let energyDecay = this.decayRates.energy * speciesMultiplier.energy * deltaTime;
 
       // Apply state-specific modifiers
       switch (state) {
@@ -61,6 +74,9 @@ class NeedsDecaySystem {
           hungerDecay *= this.decayRates.activityMultiplier.hunger;
           thirstDecay *= this.decayRates.activityMultiplier.thirst;
           tirednessDecay *= this.decayRates.activityMultiplier.tiredness;
+
+          // Apply state multiplier for energy
+          energyDecay *= this.decayRates.energyStateMultiplier[EntityState.MOVING];
 
           // Apply terrain-based energy cost when moving
           const terrain = this.terrainGrid.get(
@@ -71,16 +87,21 @@ class NeedsDecaySystem {
           hungerDecay *= terrainAttributes.energyMultiplier;
           thirstDecay *= terrainAttributes.energyMultiplier;
           tirednessDecay *= terrainAttributes.energyMultiplier;
+          energyDecay *= terrainAttributes.energyMultiplier;
           break;
 
         case EntityState.DRINKING:
           // Drinking: thirst doesn't increase, other needs normal
           thirstDecay = 0;
+          // Apply state multiplier for energy
+          energyDecay *= this.decayRates.energyStateMultiplier[EntityState.DRINKING];
           break;
 
         case EntityState.EATING:
           // Eating: hunger doesn't increase, other needs normal
           hungerDecay = 0;
+          // Apply state multiplier for energy
+          energyDecay *= this.decayRates.energyStateMultiplier[EntityState.EATING];
           break;
 
         case EntityState.SLEEPING:
@@ -88,10 +109,30 @@ class NeedsDecaySystem {
           tirednessDecay = 0;
           hungerDecay *= 0.1;
           thirstDecay *= 0.1;
+
+          // Energy RESTORATION during sleep (graduated formula)
+          energyDecay *= this.decayRates.energyStateMultiplier[EntityState.SLEEPING];
+
+          // Graduated restoration based on hunger/thirst satisfaction
+          const hungerSatisfaction = 1 - (Needs.hunger[eid] / 100);
+          const thirstSatisfaction = 1 - (Needs.thirst[eid] / 100);
+
+          // Calculate average satisfaction (allows partial restoration)
+          const avgSatisfaction = (hungerSatisfaction + thirstSatisfaction) / 2;
+
+          // ALWAYS restore at least 25% of base rate, even if starving
+          // This prevents complete inability to recover energy
+          const minRestoration = 0.25;
+          const restorationMultiplier = Math.max(minRestoration, avgSatisfaction);
+
+          // Reduce restoration if hungry/thirsty (but never below 25%)
+          energyDecay *= restorationMultiplier;
           break;
 
         case EntityState.IDLE:
           // Idle: normal base decay (no changes needed)
+          // Apply state multiplier for energy
+          energyDecay *= this.decayRates.energyStateMultiplier[EntityState.IDLE];
           break;
       }
 
@@ -100,19 +141,35 @@ class NeedsDecaySystem {
       Needs.thirst[eid] = Math.min(this.maxNeed, Needs.thirst[eid] + thirstDecay);
       Needs.tiredness[eid] = Math.min(this.maxNeed, Needs.tiredness[eid] + tirednessDecay);
 
+      // Apply energy change (can decrease OR increase with max cap from Age system)
+      // Note: energyDecay can be negative (restoration) during sleeping
+      const maxEnergy = Energy.max[eid];  // Age-adjusted max (will be set by AgeSystem)
+      Energy.current[eid] = Math.max(0, Math.min(maxEnergy, Energy.current[eid] - energyDecay));
+
       // Auto pass out from exhaustion
       if (Needs.tiredness[eid] >= 100) {
-        // Force entity to sleep if too tired
-        if (State.current[eid] !== EntityState.SLEEPING) {
-          const species = SpeciesComponent.type[eid] === Species.HUMAN ? 'Human' : 'Rabbit';
-          const gender = Gender.isMale[eid] ? 'Male' : 'Female';
-          // DO NOT uncomment the console log below
-          // console.log(`😴 Entity ${eid} (${gender} ${species}) passed out from exhaustion`);
+        // Check if in water
+        const x = Math.floor(Position.x[eid]);
+        const y = Math.floor(Position.y[eid]);
+        const terrain = this.terrainGrid.get(x, y);
 
-          State.current[eid] = EntityState.SLEEPING;
-          Target.hasTarget[eid] = 0;
-          Velocity.vx[eid] = 0;
-          Velocity.vy[eid] = 0;
+        if (terrain === TerrainType.WATER) {
+          // DROWN instead of falling asleep
+          // DeathSystem will handle drowning death
+          // Don't force sleep - entity will drown
+        } else {
+          // Force entity to sleep if too tired (only on land)
+          if (State.current[eid] !== EntityState.SLEEPING) {
+            const species = SpeciesComponent.type[eid] === Species.HUMAN ? 'Human' : 'Rabbit';
+            const gender = Gender.isMale[eid] ? 'Male' : 'Female';
+            // DO NOT uncomment the console log below
+            // console.log(`😴 Entity ${eid} (${gender} ${species}) passed out from exhaustion`);
+
+            State.current[eid] = EntityState.SLEEPING;
+            Target.hasTarget[eid] = 0;
+            Velocity.vx[eid] = 0;
+            Velocity.vy[eid] = 0;
+          }
         }
       }
     }
@@ -143,9 +200,10 @@ class NeedsDecaySystem {
   }
 }
 
-// Death system - handles entity death from starvation/dehydration
+// Death system - handles entity death from starvation/dehydration/drowning
 class DeathSystem {
-  constructor() {
+  constructor(terrainGrid) {
+    this.terrainGrid = terrainGrid;
     this.deathThreshold = 100;  // Die when need reaches 100
     this.timeToDieFrames = 300;  // Must be at 100 for 10 seconds (at 30 FPS)
     this.criticalNeedTime = new Map();  // Track how long entity has been critical
@@ -157,6 +215,26 @@ class DeathSystem {
     for (const eid of entities) {
       const hunger = Needs.hunger[eid];
       const thirst = Needs.thirst[eid];
+      const tiredness = Needs.tiredness[eid];
+
+      // Check for drowning (instant death, no grace period)
+      const x = Math.floor(Position.x[eid]);
+      const y = Math.floor(Position.y[eid]);
+      const terrain = this.terrainGrid.get(x, y);
+
+      if (terrain === TerrainType.WATER && tiredness >= this.deathThreshold) {
+        // Instant drowning (too tired to swim)
+        this.killEntity(eid, 'drowning', ecsWorld);
+        this.criticalNeedTime.delete(eid);
+        continue;
+      }
+
+      // Check for energy depletion (instant death, similar to drowning)
+      if (Energy.current[eid] <= 0) {
+        this.killEntity(eid, 'energy_depletion', ecsWorld);
+        this.criticalNeedTime.delete(eid);
+        continue;
+      }
 
       // Check if hunger or thirst is lethal
       const isStarving = hunger >= this.deathThreshold;

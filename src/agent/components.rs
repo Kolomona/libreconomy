@@ -59,6 +59,46 @@ impl Component for Needs {
     type Storage = VecStorage<Self>;
 }
 
+/// Agent energy component tracking current energy and maximum energy
+///
+/// Energy represents overall health/fitness and affects movement speed and decision-making.
+/// Values are automatically clamped between 0.0 and the maximum energy.
+///
+/// # Example
+///
+/// ```rust
+/// use libreconomy::EnergyComponent;
+///
+/// let energy = EnergyComponent::new(100.0, 100.0);
+/// assert_eq!(energy.current, 100.0);
+/// assert_eq!(energy.max, 100.0);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EnergyComponent {
+    pub current: f32,
+    pub max: f32,
+}
+
+impl EnergyComponent {
+    /// Creates a new Energy component with current and max values
+    pub fn new(current: f32, max: f32) -> Self {
+        let max = max.max(1.0); // Ensure max is at least 1
+        Self {
+            current: current.max(0.0).min(max),
+            max,
+        }
+    }
+
+    /// Clamp the current energy to [0, max]
+    pub fn clamp(&mut self) {
+        self.current = self.current.max(0.0).min(self.max);
+    }
+}
+
+impl Component for EnergyComponent {
+    type Storage = VecStorage<Self>;
+}
+
 /// Agent inventory component for storing items
 ///
 /// Maps item IDs (strings) to quantities. Operations are saturating and panic-free.

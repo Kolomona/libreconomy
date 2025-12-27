@@ -85,6 +85,12 @@ class DecisionSystem {
       return true;
     }
 
+    // Check if energy is critically low (force REST)
+    const energyPercent = (Energy.current[entityId] / Energy.max[entityId]) * 100;
+    if (energyPercent < 10 && newIntent.type === IntentType.REST) {
+      return true;  // Always allow REST when energy critical
+    }
+
     // SPECIAL: Protect EATING/DRINKING from intent validation interruptions
     // When consuming, targets become stale but activity should continue
     const isConsuming = currentState === EntityState.EATING || currentState === EntityState.DRINKING;
@@ -116,6 +122,22 @@ class DecisionSystem {
   applyIntent(entityId, intent, ecsWorld) {
     switch (intent.type) {
       case IntentType.SEEK_WATER:
+        // Set target position
+        if (intent.target && !isNaN(intent.target.x) && !isNaN(intent.target.y)) {
+          Target.x[entityId] = intent.target.x;
+          Target.y[entityId] = intent.target.y;
+          Target.hasTarget[entityId] = 1;
+          State.current[entityId] = EntityState.MOVING;
+        } else {
+          // No target found nearby - wander to explore
+          const wanderTarget = this.getWanderTarget(entityId, ecsWorld);
+          Target.x[entityId] = wanderTarget.x;
+          Target.y[entityId] = wanderTarget.y;
+          Target.hasTarget[entityId] = 1;
+          State.current[entityId] = EntityState.MOVING;
+        }
+        break;
+
       case IntentType.SEEK_FOOD:
         // Set target position
         if (intent.target && !isNaN(intent.target.x) && !isNaN(intent.target.y)) {
@@ -124,8 +146,10 @@ class DecisionSystem {
           Target.hasTarget[entityId] = 1;
           State.current[entityId] = EntityState.MOVING;
         } else {
-          // No target found nearby or target is invalid - wander to explore
-          const wanderTarget = this.getWanderTarget(entityId);
+          // No target found nearby - wander to explore
+          // Use larger radius if desperate (high hunger)
+          const hunger = Needs.hunger[entityId];
+          const wanderTarget = this.getWanderTarget(entityId, ecsWorld, hunger > 70);
           Target.x[entityId] = wanderTarget.x;
           Target.y[entityId] = wanderTarget.y;
           Target.hasTarget[entityId] = 1;
@@ -182,8 +206,8 @@ class DecisionSystem {
     this.entityIntents.delete(entityId);
   }
 
-  // Calculate a random wander target near an entity
-  getWanderTarget(entityId) {
+  // Calculate terrain-cost-aware wander target (Phase 3.1)
+  getWanderTarget(entityId, ecsWorld, desperate = false) {
     const x = Position.x[entityId];
     const y = Position.y[entityId];
 
@@ -195,11 +219,66 @@ class DecisionSystem {
       };
     }
 
-    const angle = Math.random() * Math.PI * 2;
-    const distance = Math.random() * 200 + 50;
-    const targetX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH, x + Math.cos(angle) * distance));
-    const targetY = Math.max(0, Math.min(CONFIG.WORLD_HEIGHT, y + Math.sin(angle) * distance));
+    const species = SpeciesComponent.type[entityId];
 
-    return { x: targetX, y: targetY };
+    // Sample 8 directions and weight by terrain cost
+    const sampleDirections = 8;
+    const candidates = [];
+
+    for (let i = 0; i < sampleDirections; i++) {
+      const angle = (i / sampleDirections) * Math.PI * 2;
+
+      // If desperate (high hunger), explore even farther
+      // Normal: 200-600 pixels (increased from 100-300)
+      // Desperate: 400-1000 pixels
+      const distance = desperate
+        ? 400 + Math.random() * 600
+        : 200 + Math.random() * 400;
+      const targetX = Math.max(0, Math.min(CONFIG.WORLD_WIDTH - 1, x + Math.cos(angle) * distance));
+      const targetY = Math.max(0, Math.min(CONFIG.WORLD_HEIGHT - 1, y + Math.sin(angle) * distance));
+
+      // Calculate terrain cost along path
+      const cost = this.samplePathCost(x, y, targetX, targetY, species);
+
+      // Weight inversely by cost (lower cost = higher weight)
+      // Use exponential to strongly prefer low-cost paths while still allowing high-cost occasionally
+      const weight = Math.exp(-cost / 10);  // Exponential decay
+
+      candidates.push({ x: targetX, y: targetY, weight });
+    }
+
+    // Weighted random selection (prefer low-cost, but don't prohibit high-cost)
+    const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
+    let random = Math.random() * totalWeight;
+
+    for (const candidate of candidates) {
+      random -= candidate.weight;
+      if (random <= 0) {
+        return { x: candidate.x, y: candidate.y };
+      }
+    }
+
+    // Fallback (should rarely happen)
+    return { x: x + 100, y: y };
+  }
+
+  // Sample terrain cost along a straight-line path (Phase 3.1 helper)
+  samplePathCost(x1, y1, x2, y2, species) {
+    // Sample 5 points along the line
+    let totalCost = 0;
+    for (let t = 0; t <= 1; t += 0.2) {
+      const sampleX = Math.floor(x1 + (x2 - x1) * t);
+      const sampleY = Math.floor(y1 + (y2 - y1) * t);
+      const terrain = terrainGrid.get(sampleX, sampleY);
+      const attributes = CONFIG.SPECIES_TERRAIN_ATTRIBUTES[species][terrain];
+
+      // Cost = (time cost) * (energy cost)
+      // Time cost: inverse of speed (slower = higher cost)
+      // Energy cost: direct multiplier
+      const timeCost = 1 / (attributes.speedMultiplier + 0.01);  // Avoid division by zero
+      const cost = timeCost * attributes.energyMultiplier;
+      totalCost += cost;
+    }
+    return totalCost;
   }
 }
