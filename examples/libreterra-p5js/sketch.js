@@ -1,6 +1,9 @@
 // Main p5.js sketch for libreterra
 console.log('✓ sketch.js loading...');
 
+// Disable friendly errors for performance boost
+p5.disableFriendlyErrors = true;
+
 // Check if p5.js is loaded
 if (typeof p5 === 'undefined') {
   console.error('FATAL: p5.js is not loaded! Check CDN connection.');

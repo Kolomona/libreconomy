@@ -5,64 +5,167 @@ class RenderSystem {
     this.terrainGrid = terrainGrid;
     this.pixelSize = 1; // Size of each terrain pixel when rendered
     this.renderTileSize = 10; // Render terrain in 10x10 tiles for performance
-    this.terrainImage = null;  // p5.Image for terrain
-    this.imageReady = false;   // Track initialization
+
+    // Chunk system for industry-standard terrain rendering
+    this.CHUNK_SIZE = 512;  // 512×512 pixels per chunk
+    this.chunksX = Math.ceil(terrainGrid.width / this.CHUNK_SIZE);
+    this.chunksY = Math.ceil(terrainGrid.height / this.CHUNK_SIZE);
+
+    // Cache for pre-rendered chunks
+    this.chunkCache = new Map();  // key: "x,y" -> p5.Graphics buffer
+
+    // Initialization state
+    this.chunksInitialized = false;
+    this.initializingChunks = false;
   }
 
-  // Initialize terrain image (call once in setup)
-  initializeTerrainImage() {
-    console.log('Creating terrain p5.Image...');
-    const startTime = performance.now();
+  // Pre-render a single chunk to offscreen buffer
+  renderChunk(chunkX, chunkY) {
+    // Create offscreen graphics buffer for this chunk
+    const chunkBuffer = createGraphics(this.CHUNK_SIZE, this.CHUNK_SIZE);
 
-    // Create p5.Image (RGBA format)
-    this.terrainImage = createImage(this.terrainGrid.width, this.terrainGrid.height);
-    this.terrainImage.loadPixels();
+    // Calculate world pixel coordinates for this chunk
+    const worldX = chunkX * this.CHUNK_SIZE;
+    const worldY = chunkY * this.CHUNK_SIZE;
 
-    // Convert Uint8Array → RGBA pixels
-    const pixels = this.terrainImage.pixels;
-    const terrainData = this.terrainGrid.data;
+    // Render terrain pixels to chunk buffer
+    chunkBuffer.loadPixels();
 
-    for (let i = 0; i < terrainData.length; i++) {
-      const terrainType = terrainData[i];
-      const color = this.terrainGrid.getColor(terrainType);
+    for (let y = 0; y < this.CHUNK_SIZE; y++) {
+      for (let x = 0; x < this.CHUNK_SIZE; x++) {
+        const terrainX = worldX + x;
+        const terrainY = worldY + y;
 
-      const pixelIndex = i * 4;
-      pixels[pixelIndex + 0] = color.r;
-      pixels[pixelIndex + 1] = color.g;
-      pixels[pixelIndex + 2] = color.b;
-      pixels[pixelIndex + 3] = 255;
+        // Skip if outside terrain bounds
+        if (terrainX >= this.terrainGrid.width || terrainY >= this.terrainGrid.height) {
+          continue;
+        }
+
+        const terrainType = this.terrainGrid.get(terrainX, terrainY);
+        const color = this.terrainGrid.getColor(terrainType);
+
+        const pixelIndex = (y * this.CHUNK_SIZE + x) * 4;
+        chunkBuffer.pixels[pixelIndex + 0] = color.r;
+        chunkBuffer.pixels[pixelIndex + 1] = color.g;
+        chunkBuffer.pixels[pixelIndex + 2] = color.b;
+        chunkBuffer.pixels[pixelIndex + 3] = 255;
+      }
     }
 
-    this.terrainImage.updatePixels();
-    this.imageReady = true;
+    chunkBuffer.updatePixels();
 
-    const elapsed = performance.now() - startTime;
-    console.log(`✓ Terrain image created in ${elapsed.toFixed(0)}ms`);
+    // Store in cache
+    const chunkKey = `${chunkX},${chunkY}`;
+    this.chunkCache.set(chunkKey, chunkBuffer);
   }
 
-  // Render terrain using p5.Image
-  renderTerrain(camera) {
-    if (!this.imageReady) return;
+  // Initialize terrain chunks (call once in setup)
+  initializeTerrainImage() {
+    console.log('Initializing chunk-based terrain rendering...');
+    console.log(`Creating ${this.chunksX}×${this.chunksY} chunks (${this.chunksX * this.chunksY} total)`);
 
-    smooth();    // Enable p5.js bilinear filtering for smooth scaling
+    const startTime = performance.now();
+    this.initializingChunks = true;
+
+    // Pre-render all chunks (chunked to avoid freezing)
+    let currentChunkIndex = 0;
+    const totalChunks = this.chunksX * this.chunksY;
+
+    const renderNextChunk = () => {
+      if (currentChunkIndex >= totalChunks) {
+        // All chunks rendered
+        this.chunksInitialized = true;
+        this.initializingChunks = false;
+        const elapsed = performance.now() - startTime;
+        console.log(`✓ All chunks rendered in ${elapsed.toFixed(0)}ms`);
+
+        // Hide loading overlay
+        loadingOverlay.hide();
+
+        return;
+      }
+
+      // Calculate chunk coordinates
+      const chunkX = currentChunkIndex % this.chunksX;
+      const chunkY = Math.floor(currentChunkIndex / this.chunksX);
+
+      // Pre-render this chunk
+      this.renderChunk(chunkX, chunkY);
+
+      currentChunkIndex++;
+
+      // Update loading overlay
+      const progress = (currentChunkIndex / totalChunks) * 100;
+      loadingOverlay.show(`Rendering terrain chunks... ${Math.round(progress)}%`, progress);
+      background(20);
+      loadingOverlay.render(window);
+
+      // Continue with next chunk
+      setTimeout(renderNextChunk, 0);
+    };
+
+    renderNextChunk();
+  }
+
+  // Render terrain using chunk-based rendering
+  renderTerrain(camera) {
+    if (!this.chunksInitialized) return;
+
+    // Calculate visible chunk range
+    const bounds = camera.getVisibleBounds();
+
+    const minChunkX = Math.max(0, Math.floor(bounds.minX / this.CHUNK_SIZE));
+    const maxChunkX = Math.min(this.chunksX - 1, Math.floor(bounds.maxX / this.CHUNK_SIZE));
+    const minChunkY = Math.max(0, Math.floor(bounds.minY / this.CHUNK_SIZE));
+    const maxChunkY = Math.min(this.chunksY - 1, Math.floor(bounds.maxY / this.CHUNK_SIZE));
+
+    // Render visible chunks
+    smooth();  // Enable smooth scaling
     noStroke();
-    image(this.terrainImage, 0, 0);  // Single draw call for entire terrain
+
+    for (let cy = minChunkY; cy <= maxChunkY; cy++) {
+      for (let cx = minChunkX; cx <= maxChunkX; cx++) {
+        const chunkKey = `${cx},${cy}`;
+        const chunkBuffer = this.chunkCache.get(chunkKey);
+
+        if (chunkBuffer) {
+          const worldX = cx * this.CHUNK_SIZE;
+          const worldY = cy * this.CHUNK_SIZE;
+
+          // Draw pre-rendered chunk
+          image(chunkBuffer, worldX, worldY);
+        }
+      }
+    }
   }
 
   // Update single pixel (for dynamic terrain changes like grass depletion)
   updateTerrainPixel(x, y, newTerrainType) {
-    if (!this.imageReady) return;
+    if (!this.chunksInitialized) return;
 
-    this.terrainImage.loadPixels();
+    // Calculate which chunk contains this pixel
+    const chunkX = Math.floor(x / this.CHUNK_SIZE);
+    const chunkY = Math.floor(y / this.CHUNK_SIZE);
+    const chunkKey = `${chunkX},${chunkY}`;
+
+    const chunkBuffer = this.chunkCache.get(chunkKey);
+    if (!chunkBuffer) return;
+
+    // Calculate pixel position within chunk
+    const localX = x % this.CHUNK_SIZE;
+    const localY = y % this.CHUNK_SIZE;
+
+    // Update chunk buffer
+    chunkBuffer.loadPixels();
     const color = this.terrainGrid.getColor(newTerrainType);
-    const pixelIndex = (y * this.terrainGrid.width + x) * 4;
+    const pixelIndex = (localY * this.CHUNK_SIZE + localX) * 4;
 
-    this.terrainImage.pixels[pixelIndex + 0] = color.r;
-    this.terrainImage.pixels[pixelIndex + 1] = color.g;
-    this.terrainImage.pixels[pixelIndex + 2] = color.b;
-    this.terrainImage.pixels[pixelIndex + 3] = 255;
+    chunkBuffer.pixels[pixelIndex + 0] = color.r;
+    chunkBuffer.pixels[pixelIndex + 1] = color.g;
+    chunkBuffer.pixels[pixelIndex + 2] = color.b;
+    chunkBuffer.pixels[pixelIndex + 3] = 255;
 
-    this.terrainImage.updatePixels();
+    chunkBuffer.updatePixels();
   }
 
   // Render all entities
