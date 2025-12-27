@@ -110,6 +110,19 @@ async function setup() {
   terrainSystem = new TerrainSystem(terrainGrid);
   renderSystem = new RenderSystem(terrainGrid);
 
+  // Initialize terrain image
+  loadingOverlay.show("Converting terrain to image...");
+  background(20);
+  loadingOverlay.render(window);
+
+  renderSystem.initializeTerrainImage();
+  console.log('✓ Terrain image ready');
+
+  // Wire up terrain change callbacks
+  terrainGrid.onTerrainChange = (x, y, newTerrainType) => {
+    renderSystem.updateTerrainPixel(x, y, newTerrainType);
+  };
+
   // Initialize ECS world
   console.log('Initializing ECS world...');
   ecsWorld = createECSWorld();

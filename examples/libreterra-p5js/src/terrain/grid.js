@@ -9,6 +9,9 @@ class TerrainGrid {
     // 10,000 x 10,000 = 100,000,000 bytes = ~95 MB
     this.data = new Uint8Array(width * height);
 
+    // Callback for terrain changes (used by RenderSystem to update terrain image)
+    this.onTerrainChange = null;
+
     console.log(`Terrain grid initialized: ${width}x${height} (${(this.data.length / 1024 / 1024).toFixed(1)} MB)`);
   }
 
@@ -68,6 +71,12 @@ class TerrainGrid {
   depleteGrass(x, y) {
     if (this.get(x, y) === TerrainType.GRASS) {
       this.set(x, y, TerrainType.DIRT);
+
+      // Notify render system of terrain change
+      if (this.onTerrainChange) {
+        this.onTerrainChange(x, y, TerrainType.DIRT);
+      }
+
       return true;
     }
     return false;

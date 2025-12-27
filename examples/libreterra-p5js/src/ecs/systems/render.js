@@ -5,45 +5,64 @@ class RenderSystem {
     this.terrainGrid = terrainGrid;
     this.pixelSize = 1; // Size of each terrain pixel when rendered
     this.renderTileSize = 10; // Render terrain in 10x10 tiles for performance
+    this.terrainImage = null;  // p5.Image for terrain
+    this.imageReady = false;   // Track initialization
   }
 
-  // Render visible terrain (with viewport culling)
+  // Initialize terrain image (call once in setup)
+  initializeTerrainImage() {
+    console.log('Creating terrain p5.Image...');
+    const startTime = performance.now();
+
+    // Create p5.Image (RGBA format)
+    this.terrainImage = createImage(this.terrainGrid.width, this.terrainGrid.height);
+    this.terrainImage.loadPixels();
+
+    // Convert Uint8Array → RGBA pixels
+    const pixels = this.terrainImage.pixels;
+    const terrainData = this.terrainGrid.data;
+
+    for (let i = 0; i < terrainData.length; i++) {
+      const terrainType = terrainData[i];
+      const color = this.terrainGrid.getColor(terrainType);
+
+      const pixelIndex = i * 4;
+      pixels[pixelIndex + 0] = color.r;
+      pixels[pixelIndex + 1] = color.g;
+      pixels[pixelIndex + 2] = color.b;
+      pixels[pixelIndex + 3] = 255;
+    }
+
+    this.terrainImage.updatePixels();
+    this.imageReady = true;
+
+    const elapsed = performance.now() - startTime;
+    console.log(`✓ Terrain image created in ${elapsed.toFixed(0)}ms`);
+  }
+
+  // Render terrain using p5.Image
   renderTerrain(camera) {
-    const bounds = camera.getVisibleBounds();
+    if (!this.imageReady) return;
 
-    // Expand bounds slightly to avoid edge artifacts
-    const minX = Math.max(0, Math.floor(bounds.minX) - 10);
-    const maxX = Math.min(this.terrainGrid.width, Math.ceil(bounds.maxX) + 10);
-    const minY = Math.max(0, Math.floor(bounds.minY) - 10);
-    const maxY = Math.min(this.terrainGrid.height, Math.ceil(bounds.maxY) + 10);
-
-    // Render terrain as rectangles with no stroke to avoid grid lines
+    smooth();    // Enable p5.js bilinear filtering for smooth scaling
     noStroke();
+    image(this.terrainImage, 0, 0);  // Single draw call for entire terrain
+  }
 
-    // Dynamic tile size based on zoom to prevent moiré patterns
-    // When zoomed out, use larger tiles; when zoomed in, use smaller tiles
-    let tileSize;
-    if (camera.zoom < 0.3) {
-      tileSize = 100;  // Very zoomed out
-    } else if (camera.zoom < 0.5) {
-      tileSize = 50;   // Zoomed out
-    } else if (camera.zoom < 1.0) {
-      tileSize = 20;   // Medium zoom
-    } else {
-      tileSize = 10;   // Zoomed in or normal
-    }
+  // Update single pixel (for dynamic terrain changes like grass depletion)
+  updateTerrainPixel(x, y, newTerrainType) {
+    if (!this.imageReady) return;
 
-    // Render in tiles for better performance
-    for (let y = minY; y < maxY; y += tileSize) {
-      for (let x = minX; x < maxX; x += tileSize) {
-        // Sample terrain at tile center
-        const terrain = this.terrainGrid.get(x, y);
-        const color = this.terrainGrid.getColor(terrain);
+    this.terrainImage.loadPixels();
+    const color = this.terrainGrid.getColor(newTerrainType);
+    const pixelIndex = (y * this.terrainGrid.width + x) * 4;
 
-        fill(color.r, color.g, color.b);
-        rect(x, y, tileSize + 1, tileSize + 1);  // +1 overlap to prevent gaps
-      }
-    }
+    this.terrainImage.pixels[pixelIndex + 0] = color.r;
+    this.terrainImage.pixels[pixelIndex + 1] = color.g;
+    this.terrainImage.pixels[pixelIndex + 2] = color.b;
+    this.terrainImage.pixels[pixelIndex + 3] = 255;
+
+    this.terrainImage.updatePixels();
   }
 
   // Render all entities
@@ -51,8 +70,9 @@ class RenderSystem {
     const entities = allEntitiesQuery(ecsWorld);
 
     for (const eid of entities) {
-      const x = Position.x[eid];
-      const y = Position.y[eid];
+      // Round entity coordinates to prevent sub-pixel shimmering
+      const x = Math.round(Position.x[eid]);
+      const y = Math.round(Position.y[eid]);
 
       // Skip if outside viewport
       if (!this.isInViewport(x, y, camera)) continue;

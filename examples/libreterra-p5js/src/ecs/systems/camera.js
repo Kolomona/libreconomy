@@ -205,7 +205,10 @@ class CameraSystem {
     push();
     translate(width / 2, height / 2);
     scale(this.zoom);
-    translate(-this.x, -this.y);
+    // Round camera position to eliminate sub-pixel rendering artifacts
+    // This keeps smooth camera movement (stored as floats) while ensuring
+    // pixel-perfect rendering (rendered at integer coordinates)
+    translate(-Math.round(this.x), -Math.round(this.y));
   }
 
   // Reset camera transform
