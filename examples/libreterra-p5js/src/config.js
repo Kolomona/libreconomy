@@ -39,8 +39,8 @@ const CONFIG = {
 
   // Simulation settings
   SIMULATION: {
-    INITIAL_HUMANS: 1,   
-    INITIAL_RABBITS: 1,  
+    INITIAL_HUMANS: 800,   
+    INITIAL_RABBITS: 1200,  
     TARGET_FPS: 60,
     TIME_SCALE: 1.0,  // Can be modified for speed control
     PAUSED: false,
