@@ -44,6 +44,11 @@ let setupComplete = false;
 let selectionHistory = [];
 let lastHistoryCleanFrame = 0;
 
+// Entity grabbing state
+let isGrabbingEntity = false;
+let grabbedEntity = null;
+let grabbedEntityOriginalState = null;  // Store original state for restoration
+
 // p5.js setup function (async for terrain loading)
 async function setup() {
   try {
@@ -248,7 +253,8 @@ function draw() {
   frameCounter++;
 
   // Performance profiling - log every 60 frames (1 second at 60fps)
-  const shouldProfile = frameCounter % 60 === 0;
+  // const shouldProfile = frameCounter % 60 === 0;
+  const shouldProfile = false; // temporary reduce log spam
   let t1, t2, t3, t4, t5, t6, t7, t8, t9;
 
   if (shouldProfile) t1 = performance.now();
@@ -260,6 +266,11 @@ function draw() {
 
   // Update camera following (before apply)
   camera.update(ecsWorld);
+
+  // Update grabbed entity position (if grabbing)
+  if (isGrabbingEntity && grabbedEntity !== null) {
+    updateGrabbedEntityPosition();
+  }
 
   // Apply camera transform
   camera.apply();
@@ -504,6 +515,32 @@ function findEntityAtPosition(screenX, screenY) {
   return closestEntity;
 }
 
+// Update grabbed entity position to follow mouse
+function updateGrabbedEntityPosition() {
+  if (grabbedEntity !== null) {
+    const worldX = camera.screenToWorldX(mouseX);
+    const worldY = camera.screenToWorldY(mouseY);
+
+    // Clamp to world bounds
+    Position.x[grabbedEntity] = Math.max(0, Math.min(CONFIG.WORLD_WIDTH - 1, worldX));
+    Position.y[grabbedEntity] = Math.max(0, Math.min(CONFIG.WORLD_HEIGHT - 1, worldY));
+  }
+}
+
+// Drop grabbed entity
+function dropGrabbedEntity() {
+  if (grabbedEntity !== null) {
+    console.log(`Dropped entity ${grabbedEntity} at (${Position.x[grabbedEntity].toFixed(0)}, ${Position.y[grabbedEntity].toFixed(0)})`);
+
+    // Entity stays at drop location
+    // Don't restore needs/energy (those were frozen during grab)
+
+    isGrabbingEntity = false;
+    grabbedEntity = null;
+    grabbedEntityOriginalState = null;
+  }
+}
+
 // Clean dead entities from selection history
 function cleanSelectionHistory() {
   const allEntities = allEntitiesQuery(ecsWorld);
@@ -542,48 +579,80 @@ function updateSystems() {
   // Phase 6: Update consumption system
   consumptionSystem.update(ecsWorld);
 
+  // Freeze grabbed entity's state (restore original values)
+  if (isGrabbingEntity && grabbedEntity !== null && grabbedEntityOriginalState !== null) {
+    Needs.hunger[grabbedEntity] = grabbedEntityOriginalState.hunger;
+    Needs.thirst[grabbedEntity] = grabbedEntityOriginalState.thirst;
+    Needs.tiredness[grabbedEntity] = grabbedEntityOriginalState.tiredness;
+    Energy.current[grabbedEntity] = grabbedEntityOriginalState.energy;
+  }
+
   // Check for deaths (after all other systems)
   deathSystem.update(ecsWorld);
 }
 
 // p5.js mouse pressed handler
 function mousePressed() {
-  // Check for entity click
-  const clickedEntity = findEntityAtPosition(mouseX, mouseY);
+  // Middle-click: Pan camera (don't select entities)
+  if (mouseButton === CENTER) {
+    camera.handleMousePressed();  // Start pan
+    return false;
+  }
 
-  if (clickedEntity !== null) {
-    // Select entity
-    selectedEntity = clickedEntity;
+  // Left-click: Select entity or drop grabbed entity
+  if (mouseButton === LEFT) {
+    // Check if in grabbing mode
+    if (isGrabbingEntity) {
+      // Drop entity at current location
+      dropGrabbedEntity();
+      return false;
+    }
 
-    // Start camera following
-    camera.startFollowing(clickedEntity);
+    // Normal entity selection
+    const clickedEntity = findEntityAtPosition(mouseX, mouseY);
 
-    // Add to selection history if not already present
-    if (!selectionHistory.includes(clickedEntity)) {
-      selectionHistory.push(clickedEntity);
-      console.log(`Selected entity ${clickedEntity} (added to history, ${selectionHistory.length} total)`);
+    if (clickedEntity !== null) {
+      // Select entity
+      selectedEntity = clickedEntity;
+
+      // Start camera following
+      camera.startFollowing(clickedEntity);
+
+      // Add to selection history if not already present
+      if (!selectionHistory.includes(clickedEntity)) {
+        selectionHistory.push(clickedEntity);
+        console.log(`Selected entity ${clickedEntity} (added to history, ${selectionHistory.length} total)`);
+      } else {
+        console.log(`Selected entity ${clickedEntity} (already in history)`);
+      }
     } else {
-      console.log(`Selected entity ${clickedEntity} (already in history)`);
+      // Deselect if clicking empty space
+      if (selectedEntity !== null) {
+        selectedEntity = null;
+
+        // Stop camera following
+        camera.stopFollowing();
+
+        console.log('Entity deselected');
+      }
     }
-  } else {
-    // Deselect if clicking empty space
-    if (selectedEntity !== null) {
-      selectedEntity = null;
-
-      // Stop camera following
-      camera.stopFollowing();
-
-      console.log('Entity deselected');
-    }
-
-    // Handle camera drag
-    camera.handleMousePressed();
+    return false;
   }
 }
 
 // p5.js mouse dragged handler
 function mouseDragged() {
-  camera.handleMouseDragged();
+  // Only pan on middle-click drag
+  if (mouseButton === CENTER) {
+    camera.handleMouseDragged();
+  }
+
+  // Handle entity grabbing drag
+  if (isGrabbingEntity && grabbedEntity !== null) {
+    updateGrabbedEntityPosition();
+  }
+
+  return false;
 }
 
 // p5.js mouse released handler
@@ -615,7 +684,7 @@ function keyPressed() {
       const x = Position.x[randomEntity];
       const y = Position.y[randomEntity];
       camera.centerOn(x, y);
-      camera.zoom = 2.0; // Zoom in to see the entity
+      camera.zoom = 1.0; // Zoom in to see the entity
       selectedEntity = randomEntity;
 
       // Start camera following
@@ -651,16 +720,36 @@ function keyPressed() {
     console.log(`Time scale: ${timeScale.toFixed(1)}x`);
   }
 
-  // R: Reset camera
+  // Shift+Numpad Minus: Set speed to minimum (0.1x)
+  if (keyCode === 109 && keyIsDown(SHIFT)) {  // Numpad minus
+    timeScale = 0.1;
+    console.log(`Time scale: ${timeScale.toFixed(1)}x (MINIMUM)`);
+  }
+
+  // Shift+Numpad Plus: Set speed to maximum (10.0x)
+  if (keyCode === 107 && keyIsDown(SHIFT)) {  // Numpad plus
+    timeScale = 10.0;
+    console.log(`Time scale: ${timeScale.toFixed(1)}x (MAXIMUM)`);
+  }
+
+  // Shift+Ctrl+Numpad Plus: Set speed to normal (1.0x)
+  if (keyCode === 107 && keyIsDown(SHIFT) && keyIsDown(CONTROL)) {  // Numpad plus with Shift+Ctrl
+    timeScale = 1.0;
+    console.log(`Time scale: ${timeScale.toFixed(1)}x (NORMAL)`);
+  }
+
+  // R: Restore selected entity's needs and energy
   if (key === 'r' || key === 'R') {
-    camera.centerOn(CONFIG.WORLD_WIDTH / 2, CONFIG.WORLD_HEIGHT / 2);
-    camera.zoom = CONFIG.CAMERA.INITIAL_ZOOM;
-    selectedEntity = null;
-
-    // Stop camera following
-    camera.stopFollowing();
-
-    console.log('Camera reset to center');
+    if (selectedEntity !== null) {
+      // Restore selected entity's needs and energy
+      Needs.hunger[selectedEntity] = 0;
+      Needs.thirst[selectedEntity] = 0;
+      Needs.tiredness[selectedEntity] = 0;
+      Energy.current[selectedEntity] = Energy.max[selectedEntity];
+      console.log(`Restored entity ${selectedEntity} - needs reset and energy replenished`);
+    } else {
+      console.log('No entity selected - press Space to select a random entity');
+    }
   }
 
   // H: Toggle help
@@ -669,11 +758,55 @@ function keyPressed() {
     controls.style.display = controls.style.display === 'none' ? 'block' : 'none';
   }
 
+  // Numpad period: Set zoom to 1.0x and center on selected entity
+  if (keyCode === 110) {  // Numpad period (.)
+    camera.zoom = 1.0;
+    if (selectedEntity !== null) {
+      const x = Position.x[selectedEntity];
+      const y = Position.y[selectedEntity];
+      camera.centerOn(x, y);
+      console.log(`Camera zoom set to 1.0x and centered on entity ${selectedEntity}`);
+    } else {
+      console.log('Camera zoom set to 1.0x');
+    }
+  }
+
+  // G: Grab selected entity
+  if (key === 'g' || key === 'G') {
+    if (selectedEntity !== null && !isGrabbingEntity) {
+      // Start grabbing
+      isGrabbingEntity = true;
+      grabbedEntity = selectedEntity;
+
+      // Save original state
+      grabbedEntityOriginalState = {
+        hunger: Needs.hunger[grabbedEntity],
+        thirst: Needs.thirst[grabbedEntity],
+        tiredness: Needs.tiredness[grabbedEntity],
+        energy: Energy.current[grabbedEntity],
+        state: State.current[grabbedEntity]
+      };
+
+      // Position entity under mouse cursor
+      const worldX = camera.screenToWorldX(mouseX);
+      const worldY = camera.screenToWorldY(mouseY);
+      Position.x[grabbedEntity] = worldX;
+      Position.y[grabbedEntity] = worldY;
+
+      // Stop entity movement
+      Velocity.vx[grabbedEntity] = 0;
+      Velocity.vy[grabbedEntity] = 0;
+      Target.hasTarget[grabbedEntity] = 0;
+      State.current[grabbedEntity] = EntityState.IDLE;
+
+      console.log(`Grabbing entity ${grabbedEntity} - Left-click to drop`);
+    }
+  }
+
   // S: Spawn 10 random entities
   if ((key === 's' || key === 'S') && !event.shiftKey) {
-    let spawned = 0;
     for (let i = 0; i < 10; i++) {
-      // Random position
+      // Random position (all terrain is walkable)
       const x = Math.random() * CONFIG.WORLD_WIDTH;
       const y = Math.random() * CONFIG.WORLD_HEIGHT;
 
@@ -681,50 +814,68 @@ function keyPressed() {
       const isRabbit = Math.random() > 0.3;
       const isMale = Math.random() > 0.5;
 
-      if (terrainGrid.isWalkable(Math.floor(x), Math.floor(y))) {
-        if (isRabbit) {
-          createRabbit(ecsWorld, x, y, isMale);
-        } else {
-          createHuman(ecsWorld, x, y, isMale);
-        }
-        spawned++;
+      if (isRabbit) {
+        createRabbit(ecsWorld, x, y, isMale, frameCounter);
+      } else {
+        createHuman(ecsWorld, x, y, isMale, frameCounter);
       }
     }
-    console.log(`✨ Spawned ${spawned} random entities`);
+    console.log(`✨ Spawned 10 random entities`);
   }
 
-  // Shift+S: Spawn 500 random entities
+  // Shift+S: Spawn 500 random entities (with spatial distribution)
   if ((key === 's' || key === 'S') && event.shiftKey) {
-    const toSpawn = 500;
+    console.log('Mass spawning 500 entities with spatial distribution...');
+
+    const SPAWN_COUNT = 500;
+    const GRID_DIVISIONS = 10;  // 10×10 grid
+    const CELL_WIDTH = CONFIG.WORLD_WIDTH / GRID_DIVISIONS;
+    const CELL_HEIGHT = CONFIG.WORLD_HEIGHT / GRID_DIVISIONS;
+    const SPAWNS_PER_CELL = Math.ceil(SPAWN_COUNT / (GRID_DIVISIONS * GRID_DIVISIONS));
+
     let spawned = 0;
 
-    for (let i = 0; i < toSpawn; i++) {
-      // Random position
-      let x, y;
-      let attempts = 0;
+    // Iterate through grid cells
+    for (let gridY = 0; gridY < GRID_DIVISIONS; gridY++) {
+      for (let gridX = 0; gridX < GRID_DIVISIONS; gridX++) {
+        // Calculate cell bounds
+        const cellMinX = gridX * CELL_WIDTH;
+        const cellMaxX = (gridX + 1) * CELL_WIDTH;
+        const cellMinY = gridY * CELL_HEIGHT;
+        const cellMaxY = (gridY + 1) * CELL_HEIGHT;
 
-      // Find walkable spawn location
-      do {
-        x = Math.random() * CONFIG.WORLD_WIDTH;
-        y = Math.random() * CONFIG.WORLD_HEIGHT;
-        attempts++;
-      } while (!terrainGrid.isWalkable(Math.floor(x), Math.floor(y)) && attempts < 50);
+        // Spawn SPAWNS_PER_CELL entities in this cell
+        for (let i = 0; i < SPAWNS_PER_CELL && spawned < SPAWN_COUNT; i++) {
+          // Random position in this cell (all terrain is walkable)
+          const x = cellMinX + Math.random() * (cellMaxX - cellMinX);
+          const y = cellMinY + Math.random() * (cellMaxY - cellMinY);
 
-      if (attempts < 50) {
-        // 75% rabbits, 25% humans (to match initial spawn ratio)
-        const isRabbit = Math.random() < 0.75;
-        const isMale = Math.random() > 0.5;
+          const isMale = Math.random() < 0.5;
+          const isRabbit = Math.random() < 0.75;  // 75% rabbits, 25% humans
 
-        if (isRabbit) {
-          createRabbit(ecsWorld, x, y, isMale);
-        } else {
-          createHuman(ecsWorld, x, y, isMale);
+          if (isRabbit) {
+            createRabbit(ecsWorld, x, y, isMale, frameCounter);
+          } else {
+            createHuman(ecsWorld, x, y, isMale, frameCounter);
+          }
+
+          spawned++;
         }
-        spawned++;
       }
     }
 
-    console.log(`✨ Mass spawned ${spawned} random entities (Shift+S)`);
+    console.log(`Spawned ${spawned} entities (target: ${SPAWN_COUNT})`);
+
+    // Log species breakdown for debugging
+    const entities = allEntitiesQuery(ecsWorld);
+    let rabbits = 0, humans = 0;
+    for (const eid of entities) {
+      if (SpeciesComponent.type[eid] === Species.RABBIT) rabbits++;
+      if (SpeciesComponent.type[eid] === Species.HUMAN) humans++;
+    }
+    console.log(`  Breakdown: ${rabbits} rabbits, ${humans} humans`);
+
+    updateEntityCountUI();
   }
 
   // K: Kill 10 random entities

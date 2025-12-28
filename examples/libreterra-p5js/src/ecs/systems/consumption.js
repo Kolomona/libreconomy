@@ -81,9 +81,28 @@ class ConsumptionSystem {
       return;
     }
 
-    // Check if entity is on the terrain type it was seeking
-    if (intent.type === IntentType.SEEK_WATER && terrain === TerrainType.WATER) {
-      this.consumeWater(entityId);
+    // Check if entity is on water OR adjacent to water for drinking
+    if (intent.type === IntentType.SEEK_WATER) {
+      let canDrink = terrain === TerrainType.WATER;
+
+      // Check adjacent tiles if not on water
+      if (!canDrink) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const adjacentTerrain = this.terrainGrid.get(x + dx, y + dy);
+            if (adjacentTerrain === TerrainType.WATER) {
+              canDrink = true;
+              break;
+            }
+          }
+          if (canDrink) break;
+        }
+      }
+
+      if (canDrink) {
+        this.consumeWater(entityId);
+      }
     } else if (intent.type === IntentType.SEEK_FOOD) {
       if (species === Species.RABBIT && terrain === TerrainType.GRASS) {
         this.consumeGrass(entityId, x, y);
@@ -104,16 +123,47 @@ class ConsumptionSystem {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     if (distance <= this.interactionRange) {
-      // Reached target, start consuming
-      const x = Math.floor(Position.x[entityId]);
-      const y = Math.floor(Position.y[entityId]);
-      const terrain = this.terrainGrid.get(x, y);
+      // For water, check if water is nearby (not exact position)
+      if (intent.type === IntentType.SEEK_WATER) {
+        // Check if entity is on water OR adjacent to water
+        const entityX = Math.floor(Position.x[entityId]);
+        const entityY = Math.floor(Position.y[entityId]);
 
-      if (intent.type === IntentType.SEEK_WATER && terrain === TerrainType.WATER) {
-        State.current[entityId] = EntityState.DRINKING;
-        Velocity.vx[entityId] = 0;
-        Velocity.vy[entityId] = 0;
-      } else if (intent.type === IntentType.SEEK_FOOD) {
+        // Check current position
+        const currentTerrain = this.terrainGrid.get(entityX, entityY);
+        let hasWaterNearby = currentTerrain === TerrainType.WATER;
+
+        // If not on water, check adjacent tiles (8 directions)
+        if (!hasWaterNearby) {
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;  // Skip center (already checked)
+
+              const checkX = entityX + dx;
+              const checkY = entityY + dy;
+              const adjacentTerrain = this.terrainGrid.get(checkX, checkY);
+
+              if (adjacentTerrain === TerrainType.WATER) {
+                hasWaterNearby = true;
+                break;
+              }
+            }
+            if (hasWaterNearby) break;
+          }
+        }
+
+        if (hasWaterNearby) {
+          State.current[entityId] = EntityState.DRINKING;
+          Velocity.vx[entityId] = 0;
+          Velocity.vy[entityId] = 0;
+        }
+      }
+      // Food consumption (existing logic)
+      else if (intent.type === IntentType.SEEK_FOOD) {
+        const entityX = Math.floor(Position.x[entityId]);
+        const entityY = Math.floor(Position.y[entityId]);
+        const terrain = this.terrainGrid.get(entityX, entityY);
+
         if (species === Species.RABBIT && terrain === TerrainType.GRASS) {
           State.current[entityId] = EntityState.EATING;
           Velocity.vx[entityId] = 0;

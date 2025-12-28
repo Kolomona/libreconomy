@@ -95,7 +95,7 @@ class RenderSystem {
 
     // Debug FPS issue - log once per second
     if (!this._lastDebugTime || Date.now() - this._lastDebugTime > 1000) {
-      console.log(`📊 Rendering ${visibleChunks} chunks at zoom ${camera.zoom.toFixed(2)}x | FPS: ${Math.round(frameRate())}`);
+      // console.log(`📊 Rendering ${visibleChunks} chunks at zoom ${camera.zoom.toFixed(2)}x | FPS: ${Math.round(frameRate())}`);
       this._lastDebugTime = Date.now();
     }
 

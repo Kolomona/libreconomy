@@ -40,11 +40,11 @@ function createHuman(world, x, y, isMale, currentFrame = 0) {
   Velocity.vx[eid] = 0;
   Velocity.vy[eid] = 0;
 
-  // Add Needs (start with random values)
+  // Add Needs (newly spawned entities start with zero needs - healthy and rested)
   addComponent(world, Needs, eid);
-  Needs.hunger[eid] = Math.random() * 50; // 0-50
-  Needs.thirst[eid] = Math.random() * 50;
-  Needs.tiredness[eid] = Math.random() * 30;
+  Needs.hunger[eid] = 0;  // No hunger
+  Needs.thirst[eid] = 0;  // No thirst
+  Needs.tiredness[eid] = 0;  // Not tired
 
   // Add Species
   addComponent(world, SpeciesComponent, eid);
@@ -92,11 +92,11 @@ function createRabbit(world, x, y, isMale, currentFrame = 0) {
   Velocity.vx[eid] = 0;
   Velocity.vy[eid] = 0;
 
-  // Add Needs (rabbits get hungry/thirsty faster)
+  // Add Needs (newly spawned rabbits start with zero needs - healthy and rested)
   addComponent(world, Needs, eid);
-  Needs.hunger[eid] = Math.random() * 50;
-  Needs.thirst[eid] = Math.random() * 50;
-  Needs.tiredness[eid] = Math.random() * 30;
+  Needs.hunger[eid] = 0;  // No hunger
+  Needs.thirst[eid] = 0;  // No thirst
+  Needs.tiredness[eid] = 0;  // Not tired
 
   // Add Species
   addComponent(world, SpeciesComponent, eid);
@@ -106,16 +106,16 @@ function createRabbit(world, x, y, isMale, currentFrame = 0) {
   addComponent(world, Gender, eid);
   Gender.isMale[eid] = isMale ? 1 : 0;
 
-  // Add Energy
+  // Add Energy (start at full energy)
   addComponent(world, Energy, eid);
-  Energy.current[eid] = 80;
-  Energy.max[eid] = 80;
+  Energy.current[eid] = 100;
+  Energy.max[eid] = 100;
 
   // Add Age
   addComponent(world, Age, eid);
   Age.birthFrame[eid] = currentFrame;
   Age.expectedLifespanFrames[eid] = calculateLifespanFrames(Species.RABBIT);
-  Age.energyHistory[eid] = 80;  // Start healthy
+  Age.energyHistory[eid] = 100;  // Start healthy
 
   // Add Target
   addComponent(world, Target, eid);
