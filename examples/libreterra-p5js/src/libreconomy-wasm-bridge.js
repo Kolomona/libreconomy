@@ -287,10 +287,9 @@ class LibreconomyWasmBridge {
 
   // Validation (same as stub)
   validateIntent(intent, entityId, ecsWorld, worldQuery) {
-    // Check if target entity still exists
+    // Check if target entity still exists (use component check instead of O(n) array search)
     if (intent.type === IntentType.SEEK_FOOD && intent.targetEntity !== undefined) {
-      const entities = allEntitiesQuery(ecsWorld);
-      if (!entities.includes(intent.targetEntity)) {
+      if (Position.x[intent.targetEntity] === undefined) {
         return false;
       }
       // Update target position in case prey moved

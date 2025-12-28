@@ -6,6 +6,43 @@ class TerrainGenerator {
     console.log(`Terrain generator initialized with seed: ${this.seed}`);
   }
 
+  // Multi-octave noise (Fractal Brownian Motion) to eliminate repetition
+  multiOctaveNoise(x, y, octaves = 4, persistence = 0.5, lacunarity = 2.0) {
+    // Debug: Log first call
+    if (!this._debugLogged) {
+      console.log(`✨ multiOctaveNoise called! octaves=${octaves}, persistence=${persistence}, lacunarity=${lacunarity}`);
+      this._debugLogged = true;
+    }
+
+    let value = 0;
+    let amplitude = 1;
+    let frequency = 1;
+    let maxValue = 0;
+
+    // Offsets in NOISE SPACE (applied after frequency multiplication)
+    // Using large prime-like numbers to break repetition alignment
+    const octaveOffsets = [
+      { x: 0, y: 0 },
+      { x: 1234.56789, y: 2345.67891 },
+      { x: 3456.78912, y: 4567.89123 },
+      { x: 5678.91234, y: 6789.12345 }
+    ];
+
+    for (let i = 0; i < octaves; i++) {
+      // Apply frequency FIRST, then add offset in noise space
+      const offset = octaveOffsets[i % octaveOffsets.length];
+      const sampleX = x * frequency + offset.x;
+      const sampleY = y * frequency + offset.y;
+
+      value += noise(sampleX, sampleY) * amplitude;
+      maxValue += amplitude;
+      amplitude *= persistence;  // Each octave has reduced amplitude
+      frequency *= lacunarity;   // Each octave has increased frequency
+    }
+
+    return value / maxValue;  // Normalize to 0-1 range
+  }
+
   // Generate terrain for the entire grid
   generate(terrainGrid) {
     console.log('Generating terrain...');
@@ -19,11 +56,25 @@ class TerrainGenerator {
     const grassThreshold = CONFIG.TERRAIN_GEN.GRASS_THRESHOLD;
     const rockyThreshold = CONFIG.TERRAIN_GEN.ROCKY_THRESHOLD;
 
-    // Generate terrain using Perlin noise
+    // Generate terrain using multi-octave Perlin noise
+    const octaves = CONFIG.TERRAIN_GEN.OCTAVES;
+    const persistence = CONFIG.TERRAIN_GEN.PERSISTENCE;
+    const lacunarity = CONFIG.TERRAIN_GEN.LACUNARITY;
+
+    console.log(`🎲 Using multi-octave noise: scale=${scale}, octaves=${octaves}, persistence=${persistence}, lacunarity=${lacunarity}`);
+
+    let debugLogged = false;
+
     for (let y = 0; y < terrainGrid.height; y++) {
       for (let x = 0; x < terrainGrid.width; x++) {
-        // Sample Perlin noise
-        const noiseValue = noise(x * scale, y * scale);
+        // Sample multi-octave Perlin noise
+        const noiseValue = this.multiOctaveNoise(x * scale, y * scale, octaves, persistence, lacunarity);
+
+        // Debug log first pixel
+        if (!debugLogged && x === 0 && y === 0) {
+          console.log(`🔍 First pixel: multiOctaveNoise(0, 0) = ${noiseValue}`);
+          debugLogged = true;
+        }
 
         // Map noise value to terrain type
         let terrainType;
@@ -66,6 +117,9 @@ class TerrainGenerator {
     const waterThreshold = CONFIG.TERRAIN_GEN.WATER_THRESHOLD;
     const grassThreshold = CONFIG.TERRAIN_GEN.GRASS_THRESHOLD;
     const rockyThreshold = CONFIG.TERRAIN_GEN.ROCKY_THRESHOLD;
+    const octaves = CONFIG.TERRAIN_GEN.OCTAVES;
+    const persistence = CONFIG.TERRAIN_GEN.PERSISTENCE;
+    const lacunarity = CONFIG.TERRAIN_GEN.LACUNARITY;
 
     const chunks = Math.ceil(terrainGrid.height / chunkSize);
 
@@ -75,7 +129,7 @@ class TerrainGenerator {
 
       for (let y = startY; y < endY; y++) {
         for (let x = 0; x < terrainGrid.width; x++) {
-          const noiseValue = noise(x * scale, y * scale);
+          const noiseValue = this.multiOctaveNoise(x * scale, y * scale, octaves, persistence, lacunarity);
 
           let terrainType;
           if (noiseValue < waterThreshold) {
@@ -110,10 +164,13 @@ class TerrainGenerator {
     const waterThreshold = CONFIG.TERRAIN_GEN.WATER_THRESHOLD;
     const grassThreshold = CONFIG.TERRAIN_GEN.GRASS_THRESHOLD;
     const rockyThreshold = CONFIG.TERRAIN_GEN.ROCKY_THRESHOLD;
+    const octaves = CONFIG.TERRAIN_GEN.OCTAVES;
+    const persistence = CONFIG.TERRAIN_GEN.PERSISTENCE;
+    const lacunarity = CONFIG.TERRAIN_GEN.LACUNARITY;
 
     for (let y = minY; y < maxY; y++) {
       for (let x = minX; x < maxX; x++) {
-        const noiseValue = noise(x * scale, y * scale);
+        const noiseValue = this.multiOctaveNoise(x * scale, y * scale, octaves, persistence, lacunarity);
 
         let terrainType;
         if (noiseValue < waterThreshold) {

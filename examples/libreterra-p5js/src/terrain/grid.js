@@ -77,6 +77,11 @@ class TerrainGrid {
         this.onTerrainChange(x, y, TerrainType.DIRT);
       }
 
+      // Update resource cache
+      if (this.resourceCache) {
+        this.resourceCache.removeGrassTile(x, y);
+      }
+
       return true;
     }
     return false;

@@ -40,7 +40,8 @@ class TerrainStorage {
         height: terrainGrid.height,
         data: terrainGrid.data,  // Uint8Array
         seed: seed,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        version: 2  // Increment when terrain generation algorithm changes
       };
 
       const request = store.put(data, 'current-terrain');
@@ -57,8 +58,17 @@ class TerrainStorage {
       const request = store.get('current-terrain');
 
       request.onsuccess = () => {
-        if (request.result) {
-          resolve(request.result);
+        const data = request.result;
+
+        // Check version - reject old terrain if algorithm changed
+        if (data && data.version !== 2) {
+          console.log(`⚠️ Cached terrain version ${data.version || 1} is outdated (current: 2), regenerating...`);
+          resolve(null);  // Force regeneration
+          return;
+        }
+
+        if (data) {
+          resolve(data);
         } else {
           resolve(null);  // No cached terrain
         }

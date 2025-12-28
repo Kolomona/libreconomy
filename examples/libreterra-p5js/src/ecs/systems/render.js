@@ -65,46 +65,18 @@ class RenderSystem {
     console.log(`Creating ${this.chunksX}×${this.chunksY} chunks (${this.chunksX * this.chunksY} total)`);
 
     const startTime = performance.now();
-    this.initializingChunks = true;
-
-    // Pre-render all chunks (chunked to avoid freezing)
-    let currentChunkIndex = 0;
     const totalChunks = this.chunksX * this.chunksY;
 
-    const renderNextChunk = () => {
-      if (currentChunkIndex >= totalChunks) {
-        // All chunks rendered
-        this.chunksInitialized = true;
-        this.initializingChunks = false;
-        const elapsed = performance.now() - startTime;
-        console.log(`✓ All chunks rendered in ${elapsed.toFixed(0)}ms`);
-
-        // Hide loading overlay
-        loadingOverlay.hide();
-
-        return;
+    // Pre-render all chunks SYNCHRONOUSLY (will freeze UI, but ensures completion)
+    for (let chunkY = 0; chunkY < this.chunksY; chunkY++) {
+      for (let chunkX = 0; chunkX < this.chunksX; chunkX++) {
+        this.renderChunk(chunkX, chunkY);
       }
+    }
 
-      // Calculate chunk coordinates
-      const chunkX = currentChunkIndex % this.chunksX;
-      const chunkY = Math.floor(currentChunkIndex / this.chunksX);
-
-      // Pre-render this chunk
-      this.renderChunk(chunkX, chunkY);
-
-      currentChunkIndex++;
-
-      // Update loading overlay
-      const progress = (currentChunkIndex / totalChunks) * 100;
-      loadingOverlay.show(`Rendering terrain chunks... ${Math.round(progress)}%`, progress);
-      background(20);
-      loadingOverlay.render(window);
-
-      // Continue with next chunk
-      setTimeout(renderNextChunk, 0);
-    };
-
-    renderNextChunk();
+    this.chunksInitialized = true;
+    const elapsed = performance.now() - startTime;
+    console.log(`✓ All chunks rendered in ${elapsed.toFixed(0)}ms`);
   }
 
   // Render terrain using chunk-based rendering
@@ -118,6 +90,14 @@ class RenderSystem {
     const maxChunkX = Math.min(this.chunksX - 1, Math.floor(bounds.maxX / this.CHUNK_SIZE));
     const minChunkY = Math.max(0, Math.floor(bounds.minY / this.CHUNK_SIZE));
     const maxChunkY = Math.min(this.chunksY - 1, Math.floor(bounds.maxY / this.CHUNK_SIZE));
+
+    const visibleChunks = (maxChunkY - minChunkY + 1) * (maxChunkX - minChunkX + 1);
+
+    // Debug FPS issue - log once per second
+    if (!this._lastDebugTime || Date.now() - this._lastDebugTime > 1000) {
+      console.log(`📊 Rendering ${visibleChunks} chunks at zoom ${camera.zoom.toFixed(2)}x | FPS: ${Math.round(frameRate())}`);
+      this._lastDebugTime = Date.now();
+    }
 
     // Render visible chunks
     smooth();  // Enable smooth scaling
@@ -155,17 +135,11 @@ class RenderSystem {
     const localX = x % this.CHUNK_SIZE;
     const localY = y % this.CHUNK_SIZE;
 
-    // Update chunk buffer
-    chunkBuffer.loadPixels();
+    // Use set() instead of loadPixels/updatePixels for single pixel updates
+    // This is MUCH faster as it doesn't copy the entire 512×512 buffer
     const color = this.terrainGrid.getColor(newTerrainType);
-    const pixelIndex = (localY * this.CHUNK_SIZE + localX) * 4;
-
-    chunkBuffer.pixels[pixelIndex + 0] = color.r;
-    chunkBuffer.pixels[pixelIndex + 1] = color.g;
-    chunkBuffer.pixels[pixelIndex + 2] = color.b;
-    chunkBuffer.pixels[pixelIndex + 3] = 255;
-
-    chunkBuffer.updatePixels();
+    chunkBuffer.set(localX, localY, [color.r, color.g, color.b, 255]);
+    chunkBuffer.updatePixels();  // Still needed to flush the change
   }
 
   // Render all entities

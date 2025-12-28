@@ -2,10 +2,11 @@
 // Provides spatial queries for the libreconomy decision system
 
 class WorldQuery {
-  constructor(ecsWorld, terrainGrid, spatialHash) {
+  constructor(ecsWorld, terrainGrid, spatialHash, resourceCache) {
     this.ecsWorld = ecsWorld;
     this.terrainGrid = terrainGrid;
     this.spatialHash = spatialHash;
+    this.resourceCache = resourceCache;
   }
 
   // Calculate terrain-weighted path cost between two points
@@ -43,58 +44,29 @@ class WorldQuery {
     const posY = Position.y[entityId];
     const species = SpeciesComponent.type[entityId];
 
-    const resources = [];
-
     // Determine terrain type to search for
     let targetTerrain;
     if (resourceType === 'water') {
-      targetTerrain = TerrainType.WATER;
+      targetTerrain = 'water';
     } else if (resourceType === 'grass') {
-      targetTerrain = TerrainType.GRASS;
+      targetTerrain = 'grass';
     } else {
-      return resources;
+      return [];
     }
 
-    // Scan in a spiral pattern outward from entity
-    // Sample every sampleStep pixels for performance
-    for (let radius = 0; radius < maxRadius; radius += sampleStep) {
-      // Sample around the perimeter of current radius
-      const samples = Math.max(8, Math.floor(2 * Math.PI * radius / sampleStep));
+    // Use resource cache for O(log n) lookup instead of O(radius²) spiral search
+    const nearby = this.resourceCache.findNearest(posX, posY, targetTerrain, 5, maxRadius);
 
-      for (let i = 0; i < samples; i++) {
-        const angle = (i / samples) * Math.PI * 2;
-        const x = Math.floor(posX + Math.cos(angle) * radius);
-        const y = Math.floor(posY + Math.sin(angle) * radius);
-
-        // Check bounds
-        if (x < 0 || x >= this.terrainGrid.width ||
-            y < 0 || y >= this.terrainGrid.height) {
-          continue;
-        }
-
-        const terrain = this.terrainGrid.get(x, y);
-        if (terrain === targetTerrain) {
-          const dx = x - posX;
-          const dy = y - posY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-
-          // Calculate terrain-weighted cost
-          const cost = this.calculatePathCost(posX, posY, x, y, species);
-
-          resources.push({ x, y, distance, cost });
-
-          // Return early if we found something close
-          if (resources.length >= 5) {
-            break;
-          }
-        }
-      }
-
-      // If we found resources, no need to search further
-      if (resources.length > 0) {
-        break;
-      }
-    }
+    // Calculate terrain-weighted cost for each resource
+    const resources = nearby.map(resource => {
+      const cost = this.calculatePathCost(posX, posY, resource.x, resource.y, species);
+      return {
+        x: resource.x,
+        y: resource.y,
+        distance: resource.distance,
+        cost: cost
+      };
+    });
 
     // Sort by COST (terrain-weighted) instead of distance
     resources.sort((a, b) => a.cost - b.cost);

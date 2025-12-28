@@ -161,9 +161,8 @@ class LibreconomyStub {
   // Check if an action is still valid (target still exists, etc.)
   validateIntent(intent, entityId, ecsWorld, worldQuery) {
     if (intent.type === IntentType.SEEK_FOOD && intent.targetEntity !== undefined) {
-      // Check if target rabbit still exists
-      const entities = allEntitiesQuery(ecsWorld);
-      if (!entities.includes(intent.targetEntity)) {
+      // Check if target rabbit still exists (use component check instead of O(n) array search)
+      if (Position.x[intent.targetEntity] === undefined) {
         return false; // Rabbit was eaten or died
       }
 

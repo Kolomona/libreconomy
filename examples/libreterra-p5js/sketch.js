@@ -121,6 +121,16 @@ async function setup() {
   renderSystem.initializeTerrainImage();
   console.log('✓ Terrain image ready');
 
+  // Build resource cache
+  loadingOverlay.show("Building resource cache...");
+  background(20);
+  loadingOverlay.render(window);
+
+  const resourceCache = new ResourceCache(CONFIG.SPATIAL_GRID.CELL_SIZE);
+  resourceCache.buildFromTerrain(terrainGrid);
+  terrainGrid.resourceCache = resourceCache;
+  console.log('✓ Resource cache ready');
+
   // Wire up terrain change callbacks
   terrainGrid.onTerrainChange = (x, y, newTerrainType) => {
     renderSystem.updateTerrainPixel(x, y, newTerrainType);
@@ -137,7 +147,7 @@ async function setup() {
   // Initialize spatial hash and world query (Phase 4)
   spatialHash = new SpatialHash(100); // 100x100 pixel cells
   spatialHash.update(ecsWorld);
-  worldQuery = new WorldQuery(ecsWorld, terrainGrid, spatialHash);
+  worldQuery = new WorldQuery(ecsWorld, terrainGrid, spatialHash, resourceCache);
 
   // Initialize decision-making systems (Phase 5)
   libreconomyStub = new LibreconomyWasmBridge();
@@ -218,6 +228,8 @@ function hideLoadingOverlay() {
 
 // p5.js draw function (main game loop)
 function draw() {
+  const frameStart = performance.now();
+
   background(20);
 
   // If setup is not complete, just show loading overlay
@@ -235,8 +247,16 @@ function draw() {
   }
   frameCounter++;
 
+  // Performance profiling - log every 60 frames (1 second at 60fps)
+  const shouldProfile = frameCounter % 60 === 0;
+  let t1, t2, t3, t4, t5, t6, t7, t8, t9;
+
+  if (shouldProfile) t1 = performance.now();
+
   // Update spatial hash (Phase 4)
   spatialHash.update(ecsWorld);
+
+  if (shouldProfile) t2 = performance.now();
 
   // Update camera following (before apply)
   camera.update(ecsWorld);
@@ -244,11 +264,17 @@ function draw() {
   // Apply camera transform
   camera.apply();
 
+  if (shouldProfile) t3 = performance.now();
+
   // Render terrain
   renderSystem.renderTerrain(camera);
 
+  if (shouldProfile) t4 = performance.now();
+
   // Render entities
   renderSystem.renderEntities(ecsWorld, camera, selectedEntity);
+
+  if (shouldProfile) t5 = performance.now();
 
   // Draw world bounds
   stroke(255, 255, 0);
@@ -259,15 +285,58 @@ function draw() {
   // Reset camera transform
   camera.reset();
 
+  if (shouldProfile) t6 = performance.now();
+
   // Update systems (if not paused)
   if (!isPaused) {
-    updateSystems();
+    if (shouldProfile) {
+      // Detailed system profiling
+      const s1 = performance.now();
+      needsDecaySystem.update(ecsWorld, timeScale);
+      const s2 = performance.now();
+      ageSystem.update(ecsWorld, frameCounter);
+      const s3 = performance.now();
+      decisionSystem.update(ecsWorld, frameCounter);
+      const s4 = performance.now();
+      movementSystem.update(ecsWorld, timeScale);
+      const s5 = performance.now();
+      consumptionSystem.update(ecsWorld);
+      const s6 = performance.now();
+      deathSystem.update(ecsWorld);
+      const s7 = performance.now();
+
+      console.log(`  System breakdown:
+    Needs: ${(s2-s1).toFixed(1)}ms
+    Age: ${(s3-s2).toFixed(1)}ms
+    Decision: ${(s4-s3).toFixed(1)}ms
+    Movement: ${(s5-s4).toFixed(1)}ms
+    Consumption: ${(s6-s5).toFixed(1)}ms
+    Death: ${(s7-s6).toFixed(1)}ms`);
+    } else {
+      updateSystems();
+    }
   }
+
+  if (shouldProfile) t7 = performance.now();
 
   // Update UI
   camera.updateUI();
   updateEntityCountUI();
   updateEntityInfoUI();
+
+  if (shouldProfile) {
+    t8 = performance.now();
+    const frameEnd = performance.now();
+    const total = frameEnd - frameStart;
+    console.log(`⏱️ Frame timing (${total.toFixed(1)}ms total):
+  Spatial: ${(t2-t1).toFixed(1)}ms
+  Camera: ${(t3-t2).toFixed(1)}ms
+  Terrain: ${(t4-t3).toFixed(1)}ms
+  Entities: ${(t5-t4).toFixed(1)}ms
+  Bounds: ${(t6-t5).toFixed(1)}ms
+  Systems: ${(t7-t6).toFixed(1)}ms
+  UI: ${(t8-t7).toFixed(1)}ms`);
+  }
 
   // Clean selection history periodically (every 300 frames = 5 seconds at 60 FPS)
   if (frameCounter - lastHistoryCleanFrame > 300) {
@@ -465,7 +534,7 @@ function updateSystems() {
   ageSystem.update(ecsWorld, frameCounter);
 
   // Phase 5: Update decision system
-  decisionSystem.update(ecsWorld);
+  decisionSystem.update(ecsWorld, frameCounter);
 
   // Phase 6: Update movement system
   movementSystem.update(ecsWorld, timeScale);

@@ -209,6 +209,7 @@
                 'src/ui/loading-overlay.js',
                 'src/terrain/grid.js',
                 'src/terrain/generator.js',
+                'src/terrain/resource-cache.js',
                 'src/terrain/storage.js',
                 'src/ecs/components.js',
                 'src/ecs/world.js',
@@ -237,7 +238,8 @@
 
                 console.log(`Loading script ${index + 1}/${scripts.length}: ${scripts[index]}`);
                 const script = document.createElement('script');
-                script.src = scripts[index];
+                // Add cache-busting timestamp to force browser to reload JavaScript
+                script.src = scripts[index] + '?v=' + Date.now();
                 script.onload = () => {
                     console.log(`✓ Loaded: ${scripts[index]}`);
                     loadScript(index + 1);

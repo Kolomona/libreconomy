@@ -80,7 +80,10 @@ const CONFIG = {
 
   // Terrain generation
   TERRAIN_GEN: {
-    NOISE_SCALE: 0.01,
+    NOISE_SCALE: 0.003,  // Smaller scale = larger terrain features, less repetition
+    OCTAVES: 4,          // Number of noise layers (more = more detail)
+    PERSISTENCE: 0.5,    // Amplitude falloff (0-1, lower = smoother)
+    LACUNARITY: 2.0,     // Frequency multiplier (higher = more detail)
     WATER_THRESHOLD: 0.3,
     GRASS_THRESHOLD: 0.6,
     ROCKY_THRESHOLD: 0.8,

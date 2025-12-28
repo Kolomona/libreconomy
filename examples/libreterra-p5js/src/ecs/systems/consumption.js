@@ -119,10 +119,9 @@ class ConsumptionSystem {
           Velocity.vx[entityId] = 0;
           Velocity.vy[entityId] = 0;
         } else if (species === Species.HUMAN && intent.targetEntity !== undefined) {
-          // Check if rabbit is still close
+          // Check if rabbit is still close (use component check instead of O(n) array search)
           const rabbitEid = intent.targetEntity;
-          const entities = allEntitiesQuery(ecsWorld);
-          if (entities.includes(rabbitEid)) {
+          if (Position.x[rabbitEid] !== undefined) {
             State.current[entityId] = EntityState.EATING;
             Velocity.vx[entityId] = 0;
             Velocity.vy[entityId] = 0;
@@ -191,9 +190,9 @@ class ConsumptionSystem {
       // Check if hunting rabbit (humans only)
       if (species === Species.HUMAN && intent && intent.targetEntity !== undefined) {
         const rabbitId = intent.targetEntity;
-        const entities = allEntitiesQuery(ecsWorld);
 
-        if (entities.includes(rabbitId)) {
+        // Check if rabbit still exists (use component check instead of O(n) array search)
+        if (Position.x[rabbitId] !== undefined) {
           // Check if rabbit is still close
           const dx = Position.x[rabbitId] - Position.x[entityId];
           const dy = Position.y[rabbitId] - Position.y[entityId];
@@ -217,12 +216,13 @@ class ConsumptionSystem {
         // Eating grass
         Needs.hunger[entityId] = Math.max(0, hunger - this.consumptionRates.eating);
 
-        // Deplete grass occasionally
+        // Deplete grass very rarely (visual effect only, expensive to update)
+        // Reduced from 10% to 0.1% per frame to avoid expensive chunk buffer updates
         const x = Math.floor(Position.x[entityId]);
         const y = Math.floor(Position.y[entityId]);
         const terrain = this.terrainGrid.get(x, y);
 
-        if (terrain === TerrainType.GRASS && Math.random() < 0.1) {
+        if (terrain === TerrainType.GRASS && Math.random() < 0.001) {
           this.terrainGrid.depleteGrass(x, y);
         }
       }

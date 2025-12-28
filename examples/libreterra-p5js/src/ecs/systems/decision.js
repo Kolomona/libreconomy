@@ -11,9 +11,14 @@ class DecisionSystem {
 
     // Interruption threshold: new intent must be this much more urgent
     this.INTERRUPT_THRESHOLD = 20;  // Urgency points
+
+    // Decision result cache - only re-decide when needs change significantly
+    this.decisionCache = new Map(); // eid → { decision, needsSnapshot, frame }
+    this.DECISION_THRESHOLD = 15;   // Re-decide when any need changes by 15+
+    this.MAX_DECISION_AGE = 120;    // Force re-decide after 2 seconds (120 frames @ 60fps)
   }
 
-  update(ecsWorld) {
+  update(ecsWorld, frameCounter) {
     const entities = allEntitiesQuery(ecsWorld);
 
     for (const eid of entities) {
@@ -24,45 +29,95 @@ class DecisionSystem {
       const currentIntent = intentData ? intentData.intent : null;
       const currentUrgency = intentData ? intentData.initialUrgency : 0;
 
-      // ALWAYS get new decision from libreconomy (every frame)
-      const newIntent = this.libreconomyStub.decide(eid, ecsWorld, this.worldQuery);
+      // Check if we should re-decide (uses cache)
+      if (this.shouldRedecide(eid, this.decisionCache.get(eid), frameCounter)) {
+        // Get new decision from libreconomy
+        const newIntent = this.libreconomyStub.decide(eid, ecsWorld, this.worldQuery);
 
-      // Check if we should interrupt current activity
-      if (this.shouldInterrupt(currentIntent, newIntent, currentState, currentUrgency, eid, ecsWorld)) {
-        // Apply new intent
-        this.applyIntent(eid, newIntent, ecsWorld);
+        // Cache the decision
+        this.cacheDecision(eid, newIntent, frameCounter);
 
-        // Store with urgency
-        this.entityIntents.set(eid, {
-          intent: newIntent,
-          initialUrgency: newIntent.urgency
-        });
-      } else {
-        // Continue current activity - update target if hunting or wandering
-        if (currentIntent && currentIntent.targetEntity !== undefined) {
-          // Hunting: update target to follow moving prey
-          const targetX = Position.x[currentIntent.targetEntity];
-          const targetY = Position.y[currentIntent.targetEntity];
+        // Check if we should interrupt current activity
+        if (this.shouldInterrupt(currentIntent, newIntent, currentState, currentUrgency, eid, ecsWorld)) {
+          // Apply new intent
+          this.applyIntent(eid, newIntent, ecsWorld);
 
-          // Validate and update target position
-          if (!isNaN(targetX) && !isNaN(targetY) && targetX !== undefined && targetY !== undefined) {
-            currentIntent.target = { x: targetX, y: targetY };
-            Target.x[eid] = targetX;
-            Target.y[eid] = targetY;
-          }
-        } else if (currentIntent && currentIntent.type === IntentType.WANDER) {
-          // Wandering: check if reached target, generate new one if so
-          if (Target.hasTarget[eid] === 0) {
-            // No target - entity reached previous wander target
-            // Generate new wander target
-            const wanderTarget = this.getWanderTarget(eid);
-            Target.x[eid] = wanderTarget.x;
-            Target.y[eid] = wanderTarget.y;
-            Target.hasTarget[eid] = 1;
-            State.current[eid] = EntityState.MOVING;
-            currentIntent.target = { x: wanderTarget.x, y: wanderTarget.y };
-          }
+          // Store with urgency
+          this.entityIntents.set(eid, {
+            intent: newIntent,
+            initialUrgency: newIntent.urgency
+          });
         }
+      } else {
+        // Use cached decision, just update current intent targets
+        this.updateCurrentIntent(eid, currentIntent);
+      }
+    }
+  }
+
+  // Check if we should re-decide (or use cached decision)
+  shouldRedecide(eid, cached, currentFrame) {
+    if (!cached) return true;  // No cache
+    if (State.current[eid] === EntityState.IDLE) return true;  // Always when idle
+
+    // Check if needs changed significantly
+    const hungerDiff = Math.abs(Needs.hunger[eid] - cached.needsSnapshot.hunger);
+    const thirstDiff = Math.abs(Needs.thirst[eid] - cached.needsSnapshot.thirst);
+    const tirednessDiff = Math.abs(Needs.tiredness[eid] - cached.needsSnapshot.tiredness);
+
+    if (hungerDiff > this.DECISION_THRESHOLD ||
+        thirstDiff > this.DECISION_THRESHOLD ||
+        tirednessDiff > this.DECISION_THRESHOLD) {
+      return true;  // Needs changed significantly
+    }
+
+    // Force re-decide if decision is stale
+    if (currentFrame - cached.frame > this.MAX_DECISION_AGE) {
+      return true;
+    }
+
+    return false;  // Use cached decision
+  }
+
+  // Cache a decision with needs snapshot
+  cacheDecision(eid, decision, frameCounter) {
+    this.decisionCache.set(eid, {
+      decision: decision,
+      needsSnapshot: {
+        hunger: Needs.hunger[eid],
+        thirst: Needs.thirst[eid],
+        tiredness: Needs.tiredness[eid]
+      },
+      frame: frameCounter
+    });
+  }
+
+  // Update current intent targets (for hunting and wandering)
+  updateCurrentIntent(eid, currentIntent) {
+    if (!currentIntent) return;
+
+    // Hunting: update target to follow moving prey
+    if (currentIntent.targetEntity !== undefined) {
+      const targetX = Position.x[currentIntent.targetEntity];
+      const targetY = Position.y[currentIntent.targetEntity];
+
+      // Validate and update target position
+      if (!isNaN(targetX) && !isNaN(targetY) && targetX !== undefined && targetY !== undefined) {
+        currentIntent.target = { x: targetX, y: targetY };
+        Target.x[eid] = targetX;
+        Target.y[eid] = targetY;
+      }
+    } else if (currentIntent.type === IntentType.WANDER) {
+      // Wandering: check if reached target, generate new one if so
+      if (Target.hasTarget[eid] === 0) {
+        // No target - entity reached previous wander target
+        // Generate new wander target
+        const wanderTarget = this.getWanderTarget(eid);
+        Target.x[eid] = wanderTarget.x;
+        Target.y[eid] = wanderTarget.y;
+        Target.hasTarget[eid] = 1;
+        State.current[eid] = EntityState.MOVING;
+        currentIntent.target = { x: wanderTarget.x, y: wanderTarget.y };
       }
     }
   }
@@ -204,6 +259,7 @@ class DecisionSystem {
   // Clear intent (when entity dies, etc.)
   clearIntent(entityId) {
     this.entityIntents.delete(entityId);
+    this.decisionCache.delete(entityId);
   }
 
   // Calculate terrain-cost-aware wander target (Phase 3.1)
